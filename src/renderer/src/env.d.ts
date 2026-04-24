@@ -3,13 +3,14 @@
 export {}
 
 interface WindowApi {
+  getAppVersion: () => string
   selectFolder: () => Promise<string | null>
   readDir: (
     dirPath: string
   ) => Promise<{ name: string; isDirectory: boolean; isFile: boolean }[]>
   readFile: (filePath: string) => Promise<string>
   stat: (filePath: string) => Promise<{ isFile: boolean; isDirectory: boolean; size: number }>
-  getInstalledExtensions: () => Promise<{
+  getInstalledExtensions: () => Promise<Array<{
     id: string
     name: string
     version: string
@@ -17,7 +18,7 @@ interface WindowApi {
     publisher: string
     extensionPath: string
     iconPath?: string
-  }[]>
+  }>>
   activateExtension: (extensionId: string) => Promise<void>
   claudeStart: () => Promise<{ success: boolean; error?: string }>
   claudeSetCwd: (cwd: string) => Promise<{ success: boolean }>
@@ -30,7 +31,6 @@ interface WindowApi {
     fileSize: number
     summary: string | undefined
     gitBranch: string | undefined
-    isCurrentWorkspace: true
   }>>
   claudeResumeSession: (channelId: string | null, sessionId: string) => Promise<{ success: boolean; error?: string; channelId?: string }>
   claudeStartWebviewServer: (extensionPath: string) => Promise<number>

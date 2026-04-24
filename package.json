@@ -13,13 +13,12 @@
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "start": "node scripts/run-dev.js preview",
     "dev": "node scripts/run-dev.js dev",
-    "build": "pnpm run typecheck && electron-vite build && pnpm run build:ext-host && electron-builder --win",
+    "build": "pnpm run typecheck && electron-vite build && electron-builder --win",
     "postinstall": "electron-builder install-app-deps",
-    "build:ext-host": "npx tsx scripts/prepare-extension-host.ts",
-    "build:unpack": "npm run build && npm run build:ext-host && electron-builder --dir",
-    "build:win": "npm run build && npm run build:ext-host && electron-builder --win",
-    "build:mac": "npm run build && npm run build:ext-host && electron-builder --mac",
-    "build:linux": "npm run build && npm run build:ext-host && electron-builder --linux"
+    "build:unpack": "pnpm run build && electron-builder --dir",
+    "build:win": "pnpm run build && electron-builder --win",
+    "build:mac": "pnpm run build && electron-builder --mac",
+    "build:linux": "pnpm run build && electron-builder --linux"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^2.0.0",

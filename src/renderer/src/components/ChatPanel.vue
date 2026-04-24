@@ -1,19 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, watch, nextTick, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue'
 import { useExtensionStore } from '../stores/extension'
+import type { SessionInfo } from '../../../shared/types'
 
 interface SessionTab {
   id: string
   label: string
-}
-
-interface SessionInfo {
-  id: string
-  lastModified: number
-  fileSize: number
-  summary: string | undefined
-  gitBranch: string | undefined
-  isCurrentWorkspace: true
 }
 
 const extStore = useExtensionStore()
@@ -89,11 +81,17 @@ function handleSystemMessage(msg: Record<string, unknown>, _channelId: string): 
   }
 }
 
+let webviewReady = false
+
 async function initWebview() {
   if (!extStore.activeExtensionId || extStore.activeExtensionId !== 'anthropic.claude-code') {
     webviewUrl.value = null
     return
   }
+
+  // 防止重复初始化
+  if (webviewReady) return
+  webviewReady = true
 
   loading.value = true
   error.value = null
@@ -103,6 +101,7 @@ async function initWebview() {
     if (!extPath) {
       error.value = '未找到 Claude Code 扩展路径'
       loading.value = false
+      webviewReady = false
       return
     }
 
@@ -110,17 +109,13 @@ async function initWebview() {
     webviewUrl.value = `http://127.0.0.1:${port}/`
     loading.value = false
 
-    // Wait for claude:start (no-op, just ensures binary found)
-    window.api.claudeStart().then((result) => {
-      if (!result.success) console.warn('[聊天面板] claude 启动:', result.error)
-    })
-
     // Create initial tab
     addNewTab()
   } catch (e) {
     console.error('[聊天面板] 初始化 webview 出错:', e)
     error.value = String(e)
     loading.value = false
+    webviewReady = false
   }
 }
 
@@ -128,11 +123,6 @@ function addNewTab() {
   const id = generateTabId()
   tabs.value.push({ id, label: `对话 ${tabs.value.length + 1}` })
   activeTabId.value = id
-
-  // Wait for DOM update, then notify main process
-  nextTick(() => {
-    window.api.claudeStart()
-  })
 }
 
 function switchTab(id: string) {
@@ -323,6 +313,8 @@ onBeforeUnmount(() => {
 watch(() => extStore.activeExtensionId, () => {
   tabs.value = []
   iframeRefs.value.clear()
+  channelToTab.clear()
+  webviewReady = false
   initWebview()
 })
 </script>

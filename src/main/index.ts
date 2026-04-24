@@ -1,9 +1,9 @@
-import { app, shell, BrowserWindow } from 'electron'
+import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { execSync } from 'child_process'
 import { registerDialogHandlers } from './ipc/dialog'
 import { registerFilesystemHandlers } from './ipc/filesystem'
-import { registerExtensionHandlers, shutdownExtensionHost } from './ipc/extensions'
+import { registerExtensionHandlers } from './ipc/extensions'
 import { registerClaudeWebviewHandlers, shutdownClaude } from './ipc/claude-webview'
 import { stopWebviewServer } from './claude/webview-server'
 
@@ -69,12 +69,16 @@ function createWindow(): BrowserWindow {
   return mainWindow
 }
 
-if (!app.isPackaged) {
+if (!app.isPackaged && process.env['ELECTRON_DEBUG']) {
   app.commandLine.appendSwitch('remote-debugging-port', '9222')
 }
 
 app.whenReady().then(() => {
   app.setAppUserModelId('com.aitools.desktop')
+
+  ipcMain.on('app:version', (event) => {
+    event.returnValue = app.getVersion()
+  })
 
   registerDialogHandlers()
   registerFilesystemHandlers()
@@ -91,7 +95,6 @@ app.whenReady().then(() => {
 app.on('before-quit', async () => {
   await shutdownClaude()
   stopWebviewServer()
-  await shutdownExtensionHost()
 })
 
 app.on('window-all-closed', () => {

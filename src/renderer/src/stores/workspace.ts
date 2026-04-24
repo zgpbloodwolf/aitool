@@ -20,13 +20,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (path) {
       rootPath.value = path
       await window.api.claudeSetCwd(path)
-      await refreshFiles()
+      expandedDirs.value.clear()
+      files.value = await loadDirectory(path)
     }
-  }
-
-  async function refreshFiles(): Promise<void> {
-    if (!rootPath.value) return
-    files.value = await loadDirectory(rootPath.value)
   }
 
   async function loadDirectory(dirPath: string): Promise<FileEntry[]> {
@@ -58,12 +54,27 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     } else {
       expandedDirs.value.add(path)
     }
-    await refreshFiles()
+    // Incremental update: only reload children of the toggled directory
+    await updateNodeChildren(files.value, path)
+  }
+
+  async function updateNodeChildren(nodes: FileEntry[], targetPath: string): Promise<boolean> {
+    for (const node of nodes) {
+      if (node.path === targetPath && node.isDirectory) {
+        node.children = await loadDirectory(targetPath)
+        return true
+      }
+      if (node.children) {
+        const found = await updateNodeChildren(node.children, targetPath)
+        if (found) return true
+      }
+    }
+    return false
   }
 
   function selectFile(path: string): void {
     selectedFile.value = path
   }
 
-  return { rootPath, files, expandedDirs, selectedFile, openFolder, refreshFiles, toggleDir, selectFile }
+  return { rootPath, files, expandedDirs, selectedFile, openFolder, toggleDir, selectFile }
 })

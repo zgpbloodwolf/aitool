@@ -1,6 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { ExtensionInfo, SessionInfo } from '../shared/types'
 
 const api = {
+  // App
+  getAppVersion: (): string => ipcRenderer.sendSync('app:version'),
+
   // Workspace
   selectFolder: (): Promise<string | null> => ipcRenderer.invoke('dialog:selectFolder'),
   readDir: (dirPath: string): Promise<string[]> => ipcRenderer.invoke('fs:readDir', dirPath),
@@ -24,14 +28,8 @@ const api = {
     ipcRenderer.invoke('claude:get-extension-path'),
   claudeStartWebviewServer: (extensionPath: string): Promise<number> =>
     ipcRenderer.invoke('claude:start-webview-server', extensionPath),
-  claudeListSessions: (): Promise<Array<{
-    id: string
-    lastModified: number
-    fileSize: number
-    summary: string | undefined
-    gitBranch: string | undefined
-    isCurrentWorkspace: true
-  }>> => ipcRenderer.invoke('claude:list-sessions'),
+  claudeListSessions: (): Promise<SessionInfo[]> =>
+    ipcRenderer.invoke('claude:list-sessions'),
   claudeResumeSession: (channelId: string | null, sessionId: string): Promise<{ success: boolean; error?: string; channelId?: string }> =>
     ipcRenderer.invoke('claude:resume-session', channelId, sessionId),
   claudeWebviewFromWebview: (msg: unknown): void =>
@@ -58,15 +56,7 @@ const api = {
   }
 }
 
-export interface ExtensionInfo {
-  id: string
-  name: string
-  version: string
-  description: string
-  publisher: string
-  extensionPath: string
-  iconPath?: string
-}
+export type { ExtensionInfo, SessionInfo }
 
 if (process.contextIsolated) {
   try {

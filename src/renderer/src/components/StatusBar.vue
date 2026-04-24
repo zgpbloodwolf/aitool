@@ -4,6 +4,7 @@ import { useExtensionStore } from '../stores/extension'
 
 const workspace = useWorkspaceStore()
 const extStore = useExtensionStore()
+const version = window.api.getAppVersion()
 </script>
 
 <template>
@@ -18,7 +19,7 @@ const extStore = useExtensionStore()
       <span v-if="workspace.rootPath" class="status-item clickable" @click="workspace.openFolder()">
         &#x1F4C1; {{ workspace.rootPath.split(/[\\/]/).pop() }}
       </span>
-      <span class="status-item">v0.1.0</span>
+      <span class="status-item">v{{ version }}</span>
     </div>
   </div>
 </template>

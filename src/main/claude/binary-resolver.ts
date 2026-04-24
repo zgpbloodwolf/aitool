@@ -4,6 +4,10 @@ import { discoverExtensions } from '../extension-discovery'
 
 let cachedPath: string | null | undefined
 
+function getClaudeBinaryName(): string {
+  return process.platform === 'win32' ? 'claude.exe' : 'claude'
+}
+
 export async function resolveClaudeBinary(): Promise<string | null> {
   if (cachedPath !== undefined) return cachedPath
 
@@ -15,11 +19,18 @@ export async function resolveClaudeBinary(): Promise<string | null> {
     return null
   }
 
-  const binaryPath = join(claudeExt.extensionPath, 'resources', 'native-binary', 'claude.exe')
+  const binaryName = getClaudeBinaryName()
+  const binaryPath = join(claudeExt.extensionPath, 'resources', 'native-binary', binaryName)
 
   if (!existsSync(binaryPath)) {
-    cachedPath = null
-    return null
+    // Fallback: try without platform-specific name (some distributions use different paths)
+    const fallbackPath = join(claudeExt.extensionPath, 'resources', 'native-binary', 'claude')
+    if (!existsSync(fallbackPath)) {
+      cachedPath = null
+      return null
+    }
+    cachedPath = fallbackPath
+    return fallbackPath
   }
 
   cachedPath = binaryPath

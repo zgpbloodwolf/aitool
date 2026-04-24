@@ -1,10 +1,7 @@
 import { ipcMain } from 'electron'
 import { discoverExtensions, type DiscoveredExtension } from '../extension-discovery'
-import { ExtensionHostManager } from '../extension-host/host-manager'
-import { registerAllAPIs } from '../extension-host/main-thread'
 
 let cachedExtensions: DiscoveredExtension[] | null = null
-let hostManager: ExtensionHostManager | null = null
 
 export function registerExtensionHandlers(): void {
   ipcMain.handle('ext:getInstalled', async () => {
@@ -18,25 +15,8 @@ export function registerExtensionHandlers(): void {
     if (!cachedExtensions || cachedExtensions.length === 0) {
       cachedExtensions = await discoverExtensions()
     }
-
     const ext = cachedExtensions?.find((e) => e.id === extensionId)
     if (!ext) throw new Error(`未找到扩展: ${extensionId}`)
-
-    if (!hostManager) {
-      hostManager = new ExtensionHostManager()
-      registerAllAPIs(hostManager)
-    }
-
-    await hostManager.start({
-      extensionPaths: [ext.extensionPath],
-      workspacePath: process.cwd()
-    })
+    // Extension activation is handled by the claude-webview module
   })
-}
-
-export async function shutdownExtensionHost(): Promise<void> {
-  if (hostManager) {
-    await hostManager.stop()
-    hostManager = null
-  }
 }

@@ -1,15 +1,8 @@
 import { readdir, readFile, stat } from 'fs/promises'
 import { join } from 'path'
+import type { ExtensionInfo } from '../shared/types'
 
-export interface DiscoveredExtension {
-  id: string
-  name: string
-  version: string
-  description: string
-  publisher: string
-  extensionPath: string
-  iconPath?: string
-}
+export type DiscoveredExtension = ExtensionInfo
 
 const TARGET_EXTENSIONS = new Set([
   'anthropic.claude-code',

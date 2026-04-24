@@ -1,26 +1,14 @@
 import { ipcMain, BrowserWindow } from 'electron'
+import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { join } from 'path'
 import { ClaudeProcessManager } from '../claude/process-manager'
 import { resolveClaudeBinary } from '../claude/binary-resolver'
 import { startWebviewServer } from '../claude/webview-server'
-import { readFileSync, existsSync, readdirSync, writeFileSync, openSync, readSync, statSync, closeSync } from 'fs'
-import { join } from 'path'
-import { execFile } from 'child_process'
-
-// Safe logging that won't crash on EPIPE
-import { appendFileSync } from 'fs'
-const logPath = join(process.env.USERPROFILE || process.env.HOME || '/tmp', '.claude', 'aitools-dev.log')
-function safeLog(...args: unknown[]): void {
-  try {
-    const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ')
-    appendFileSync(logPath, `[INFO] ${msg}\n`)
-  } catch { /* ignore */ }
-}
-function safeError(...args: unknown[]): void {
-  try {
-    const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ')
-    appendFileSync(logPath, `[ERROR] ${msg}\n`)
-  } catch { /* ignore */ }
-}
+import { addAllowedRoot } from './filesystem'
+import { safeLog, safeError } from '../claude/logger'
+import { listSessions, getSessionMessages } from '../claude/session-store'
+import { discoverSkills, runClaudeCliCommand } from '../claude/plugin-manager'
+import { handleGetMcpServers, handleMcpServerCommand } from '../claude/mcp-manager'
 
 interface PendingToolUse {
   id: string
@@ -44,6 +32,7 @@ interface Channel {
 }
 
 const channels = new Map<string, Channel>()
+const launchingChannels = new Set<string>()
 let extensionPath: string | null = null
 let webviewInitialized = false
 let pendingMessages: unknown[] = []
@@ -82,47 +71,6 @@ function getModelSetting(): string {
   return 'default'
 }
 
-interface SkillCommand {
-  name: string
-  description: string
-}
-
-function parseSkillMetadata(skillFile: string): { description: string } | null {
-  try {
-    const content = readFileSync(skillFile, 'utf-8')
-    const frontmatter = content.match(/^---\n([\s\S]*?)\n---/)?.[1]
-    let description = ''
-    if (frontmatter) {
-      const descLine = frontmatter.split('\n').find(l => l.startsWith('description:'))
-      if (descLine) description = descLine.replace(/^description:\s*"?/, '').replace(/"?\s*$/, '')
-    }
-    return { description }
-  } catch {
-    return null
-  }
-}
-
-function scanSkillsDir(skillsDir: string, namePrefix = ''): SkillCommand[] {
-  const commands: SkillCommand[] = []
-  if (!existsSync(skillsDir)) return commands
-
-  try {
-    const entries = readdirSync(skillsDir, { withFileTypes: true })
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue
-      const skillFile = join(skillsDir, entry.name, 'SKILL.md')
-      if (!existsSync(skillFile)) continue
-
-      const meta = parseSkillMetadata(skillFile)
-      if (meta) {
-        commands.push({ name: namePrefix + entry.name, description: meta.description })
-      }
-    }
-  } catch { /* skip unreadable dir */ }
-
-  return commands
-}
-
 function savePlanToMd(planText: string, cwd: string): void {
   try {
     const planPath = join(cwd, 'PLAN.md')
@@ -135,55 +83,7 @@ function savePlanToMd(planText: string, cwd: string): void {
   }
 }
 
-function discoverSkills(): SkillCommand[] {
-  const homeDir = process.env.USERPROFILE || process.env.HOME || ''
-  const claudeDir = join(homeDir, '.claude')
-  const commands: SkillCommand[] = []
-
-  // 1. User skills from ~/.claude/skills/
-  commands.push(...scanSkillsDir(join(claudeDir, 'skills')))
-
-  // 2. Plugin skills from ~/.claude/plugins/cache/<plugin-id>/skills/
-  const pluginCacheDir = join(claudeDir, 'plugins', 'cache')
-  if (existsSync(pluginCacheDir)) {
-    try {
-      const pluginDirs = readdirSync(pluginCacheDir, { withFileTypes: true })
-      for (const pluginDir of pluginDirs) {
-        if (!pluginDir.isDirectory()) continue
-        const pluginSkillsDir = join(pluginCacheDir, pluginDir.name, 'skills')
-        if (existsSync(pluginSkillsDir)) {
-          commands.push(...scanSkillsDir(pluginSkillsDir, pluginDir.name + ':'))
-        }
-      }
-    } catch { /* skip */ }
-  }
-
-  // 3. Plugin skills from npm global cache (e.g. zai-coding-plugins)
-  // Scan deeper: ~/.claude/plugins/cache/<marketplace>/<plugin>/skills/
-  if (existsSync(pluginCacheDir)) {
-    try {
-      const marketplaces = readdirSync(pluginCacheDir, { withFileTypes: true })
-      for (const market of marketplaces) {
-        if (!market.isDirectory()) continue
-        const marketDir = join(pluginCacheDir, market.name)
-        const subDirs = readdirSync(marketDir, { withFileTypes: true })
-        for (const sub of subDirs) {
-          if (!sub.isDirectory()) continue
-          const subSkillsDir = join(marketDir, sub.name, 'skills')
-          if (existsSync(subSkillsDir)) {
-            const pluginId = sub.name // e.g. "glm-plan-usage"
-            commands.push(...scanSkillsDir(subSkillsDir, pluginId + ':'))
-          }
-        }
-      }
-    } catch { /* skip */ }
-  }
-
-  safeLog('[ClaudeIPC] 已发现技能:', commands.length)
-  return commands
-}
-
-export async function getExtensionPath(): Promise<string | null> {
+async function getExtensionPath(): Promise<string | null> {
   if (extensionPath) return extensionPath
   const { discoverExtensions } = await import('../extension-discovery')
   const extensions = await discoverExtensions()
@@ -203,16 +103,23 @@ function sendToWebview(msg: unknown): void {
 // --- Multi-channel process management ---
 
 async function handleLaunchClaude(channelId: string, cwd: string, _permissionMode: string, _thinkingLevel: string, resumeSessionId?: string, persistent?: boolean): Promise<void> {
-  if (channels.has(channelId)) {
-    safeLog('[ClaudeIPC] 频道已存在:', channelId)
+  if (channels.has(channelId) || launchingChannels.has(channelId)) {
+    safeLog('[ClaudeIPC] 频道已存在或正在启动:', channelId)
     return
   }
 
+  launchingChannels.add(channelId)
+
   const binaryPath = await resolveClaudeBinary()
   if (!binaryPath) {
+    launchingChannels.delete(channelId)
     sendToWebview({ type: 'close_channel', channelId, error: '未找到 Claude Code CLI' })
     return
   }
+
+  // 从 settings.json 读取 env 并注入到 claude.exe 进程（与 VSCode 行为一致）
+  const settings = getClaudeSettings()
+  const procEnv: Record<string, string> = settings.env || {}
 
   safeLog('[ClaudeIPC] 正在为频道启动 claude.exe:', channelId)
   const proc = new ClaudeProcessManager()
@@ -220,7 +127,6 @@ async function handleLaunchClaude(channelId: string, cwd: string, _permissionMod
   proc.on('message', (msg: Record<string, unknown>) => {
     safeLog('[ClaudeIPC] claude.exe 输出 [' + channelId + ']:', JSON.stringify(msg).slice(0, 150))
 
-    // Capture assistant text in plan mode for PLAN.md
     const channel = channels.get(channelId)
     if (channel && channel.permissionMode === 'plan') {
       if (msg.type === 'assistant') {
@@ -238,9 +144,7 @@ async function handleLaunchClaude(channelId: string, cwd: string, _permissionMod
       }
     }
 
-    // --- Tool permission detection for interactive tools ---
     if (channel) {
-      // Streaming events: content_block_start/delta/stop
       if (msg.type === 'content_block_start') {
         const block = msg.content_block as Record<string, unknown> | undefined
         if (block?.type === 'tool_use') {
@@ -268,7 +172,6 @@ async function handleLaunchClaude(channelId: string, cwd: string, _permissionMod
         }
       }
 
-      // Complete assistant messages with tool_use content blocks
       if (msg.type === 'assistant') {
         const content = (msg.message as Record<string, unknown>)?.content as Array<Record<string, unknown>> | undefined
         if (content) {
@@ -303,7 +206,7 @@ async function handleLaunchClaude(channelId: string, cwd: string, _permissionMod
     sendToWebview({ type: 'close_channel', channelId, error: String(err) })
   })
 
-  proc.start({ claudePath: binaryPath, cwd: cwd || process.cwd(), resumeSessionId })
+  proc.start({ claudePath: binaryPath, cwd: cwd || process.cwd(), resumeSessionId, env: procEnv })
   channels.set(channelId, {
     process: proc,
     permissionMode: 'default',
@@ -312,6 +215,7 @@ async function handleLaunchClaude(channelId: string, cwd: string, _permissionMod
     permissionResolvers: new Map(),
     sentPermissionRequests: new Set()
   })
+  launchingChannels.delete(channelId)
 }
 
 function handleIoMessage(channelId: string, message: unknown, _done?: boolean): void {
@@ -357,12 +261,10 @@ function sendToolPermissionRequest(channel: Channel, channelId: string, toolUseI
     channel.permissionResolvers.set(requestId, { resolve, toolUseId })
   })
 
-  // Timeout: auto-deny after 5 minutes
   const timeout = setTimeout(() => {
     if (channel.permissionResolvers.has(requestId)) {
       channel.permissionResolvers.delete(requestId)
       safeLog('[ClaudeIPC] 工具权限请求超时:', requestId)
-      // Send denial to claude.exe
       channel.process.send({
         type: 'user',
         session_id: '',
@@ -441,30 +343,26 @@ function handleCloseChannel(channelId: string): void {
 // --- IPC Registration ---
 
 export function registerClaudeWebviewHandlers(): void {
-  // claude:start is now a no-op — sessions are created on demand via launch_claude
   ipcMain.handle('claude:start', async () => {
     safeLog('[ClaudeIPC] claude:start 已调用（空操作，会话按需创建）')
     return { success: true }
   })
 
-  // Update cwd when user selects a workspace folder
   ipcMain.handle('claude:set-cwd', (_event, cwd: string) => {
     currentCwd = cwd
+    addAllowedRoot(cwd)
     safeLog('[ClaudeIPC] 工作目录已更新:', cwd)
     return { success: true }
   })
 
-  // Messages FROM webview → main process
   ipcMain.on('claude-webview:from-webview', (_event, msg) => {
     safeLog('[ClaudeIPC] 来自 webview:', JSON.stringify(msg).slice(0, 200))
 
-    // Request type messages handled locally regardless of process state
     if (msg.type === 'request') {
       handleWebviewRequest(msg)
       return
     }
 
-    // Response type messages (replies to our tool_permission_request, etc.)
     if (msg.type === 'response') {
       const requestId = msg.requestId as string | undefined
       if (requestId) {
@@ -481,7 +379,6 @@ export function registerClaudeWebviewHandlers(): void {
       return
     }
 
-    // Channel-based message routing
     switch (msg.type) {
       case 'launch_claude':
         handleLaunchClaude(msg.channelId, msg.cwd, msg.permissionMode, msg.thinkingLevel, msg.resumeSessionId)
@@ -503,15 +400,12 @@ export function registerClaudeWebviewHandlers(): void {
     }
   })
 
-  // Legacy simple text message
   ipcMain.on('claude:send', (_event, text: string) => {
-    // Send to first active channel
     const firstChannel = channels.values().next().value
     firstChannel?.process.sendUserMessage(text)
   })
 
   ipcMain.on('claude:stop', () => {
-    // Stop all channels
     for (const channel of channels.values()) {
       channel.process.stop()
     }
@@ -531,261 +425,31 @@ export function registerClaudeWebviewHandlers(): void {
     return port
   })
 
-  // Direct session listing (not via webview message flow)
   ipcMain.handle('claude:list-sessions', async () => {
-    const sessionDir = getProjectSessionDir(currentCwd)
-    if (!sessionDir) return []
-
-    const sessions: Array<{
-      id: string
-      lastModified: number
-      fileSize: number
-      summary: string | undefined
-      gitBranch: string | undefined
-      isCurrentWorkspace: true
-    }> = []
-
-    try {
-      const entries = readdirSync(sessionDir)
-      for (const entry of entries) {
-        if (!entry.endsWith('.jsonl')) continue
-        if (entry.startsWith('agent-')) continue
-        const sessionId = entry.replace('.jsonl', '')
-        if (!UUID_RE.test(sessionId)) continue
-
-        const filePath = join(sessionDir, entry)
-        try {
-          const { head, tail, mtime, size } = readFileHeadAndTail(filePath)
-          const fullText = head + '\n' + tail
-          const summary = extractFirstUserPrompt(head) || extractStringValue(tail, 'customTitle') || extractStringValue(fullText, 'aiTitle')
-          const gitBranch = extractStringValue(fullText, 'gitBranch')
-          sessions.push({ id: sessionId, lastModified: mtime, fileSize: size, summary, gitBranch, isCurrentWorkspace: true })
-        } catch { /* skip */ }
-      }
-    } catch { /* skip */ }
-
-    sessions.sort((a, b) => b.lastModified - a.lastModified)
-    safeLog('[ClaudeIPC] ChatPanel 列出的会话:', sessions.length)
-    return sessions
+    return await listSessions(currentCwd)
   })
 
-  // Resume a session in an existing channel
   ipcMain.handle('claude:resume-session', async (_event, channelId: string, sessionId: string) => {
     safeLog('[ClaudeIPC] 正在恢复会话:', sessionId, '频道:', channelId)
 
-    // Stop existing channel (if any) without sending close_channel to webview
     if (channelId && channels.has(channelId)) {
       const channel = channels.get(channelId)!
-      // Remove listeners to prevent close_channel from being sent on exit
       channel.process.removeAllListeners()
       channel.process.stop()
       channels.delete(channelId)
     }
 
-    // Generate a channelId if none provided
     const effectiveChannelId = channelId || `ch_${Date.now()}_${Math.random().toString(36).slice(2)}`
 
-    // Read session JSONL and replay messages to webview for display
-    const sessionDir = getProjectSessionDir(currentCwd)
-    if (sessionDir) {
-      const filePath = join(sessionDir, `${sessionId}.jsonl`)
-      if (existsSync(filePath)) {
-        try {
-          const content = readFileSync(filePath, 'utf8')
-          let count = 0
-          for (const line of content.split('\n')) {
-            if (!line.trim()) continue
-            try {
-              const obj = JSON.parse(line)
-              if (obj.isSidechain || obj.isMeta || obj.isCompactSummary) continue
-              if (obj.type === 'user' || obj.type === 'assistant' || obj.type === 'system') {
-                sendToWebview({ type: 'io_message', channelId: effectiveChannelId, message: obj })
-                count++
-              }
-            } catch { /* skip malformed */ }
-          }
-          safeLog('[ClaudeIPC] 已重放', count, '条消息，会话:', sessionId)
-        } catch (e) {
-          safeError('[ClaudeIPC] 重放会话失败:', e)
-        }
-      }
+    const messages = await getSessionMessages(sessionId, currentCwd)
+    for (const obj of messages) {
+      sendToWebview({ type: 'io_message', channelId: effectiveChannelId, message: obj })
     }
+    safeLog('[ClaudeIPC] 已重放', messages.length, '条消息，会话:', sessionId)
 
-    // Start new process with --resume, persistent=true to keep channel view alive
     await handleLaunchClaude(effectiveChannelId, currentCwd, 'default', '', sessionId, true)
     return { success: true, channelId: effectiveChannelId }
   })
-}
-
-// --- Webview Request Handler ---
-
-// --- Session History ---
-
-function encodeProjectPath(cwd: string): string {
-  let encoded = cwd.replace(/[^a-zA-Z0-9]/g, '-')
-  if (encoded.length <= 200) return encoded
-  const hash = Math.abs(
-    Array.from(cwd).reduce((acc, ch) => ((acc << 5) - acc + ch.charCodeAt(0)) | 0, 0)
-  ).toString(36)
-  return `${encoded.slice(0, 200)}-${hash}`
-}
-
-function getProjectSessionDir(cwd: string): string | null {
-  const homeDir = process.env.USERPROFILE || process.env.HOME || ''
-  const claudeDir = join(homeDir, '.claude', 'projects')
-  const encoded = encodeProjectPath(cwd)
-  const dir = join(claudeDir, encoded)
-  if (existsSync(dir)) return dir
-  // Try lowercase drive letter variant (E:\ → e-\)
-  if (/^[A-Z]:/.test(cwd)) {
-    const lower = encodeProjectPath(cwd[0].toLowerCase() + cwd.slice(1))
-    const dirLower = join(claudeDir, lower)
-    if (existsSync(dirLower)) return dirLower
-  }
-  return null
-}
-
-interface HeadTail {
-  head: string
-  tail: string
-  mtime: number
-  size: number
-}
-
-const JSONL_CHUNK = 65536
-
-function readFileHeadAndTail(filePath: string): HeadTail {
-  const stat = statSync(filePath)
-  const fd = openSync(filePath, 'r')
-  try {
-    const headBuf = Buffer.alloc(JSONL_CHUNK)
-    const headBytes = readSync(fd, headBuf, 0, JSONL_CHUNK, 0)
-    const head = headBuf.toString('utf8', 0, headBytes)
-    let tail = ''
-    if (stat.size > JSONL_CHUNK) {
-      const tailBuf = Buffer.alloc(JSONL_CHUNK)
-      const tailBytes = readSync(fd, tailBuf, 0, JSONL_CHUNK, stat.size - JSONL_CHUNK)
-      tail = tailBuf.toString('utf8', 0, tailBytes)
-    }
-    return { head, tail, mtime: stat.mtimeMs, size: stat.size }
-  } finally {
-    closeSync(fd)
-  }
-}
-
-function extractFirstUserPrompt(text: string): string | undefined {
-  const lines = text.split('\n')
-  for (const line of lines) {
-    if (!line.includes('"type":"user"') && !line.includes('"type": "user"')) continue
-    try {
-      const obj = JSON.parse(line)
-      if (obj.isSidechain || obj.isMeta || obj.isCompactSummary) continue
-      const content = obj.message?.content
-      if (!Array.isArray(content)) continue
-      for (const block of content) {
-        if (block.type === 'text' && typeof block.text === 'string' && block.text.trim()) {
-          return block.text.length > 200 ? block.text.slice(0, 200) + '...' : block.text
-        }
-      }
-    } catch { /* skip malformed */ }
-  }
-  return undefined
-}
-
-function extractStringValue(text: string, key: string): string | undefined {
-  const marker = `"${key}":"`
-  const idx = text.indexOf(marker)
-  if (idx === -1) return undefined
-  const start = idx + marker.length
-  const end = text.indexOf('"', start)
-  if (end === -1) return undefined
-  return text.slice(start, end)
-}
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-
-function handleListSessionsRequest(requestId: string | undefined, cwd: string): void {
-  const sessionDir = getProjectSessionDir(cwd)
-  if (!sessionDir) {
-    sendToWebview({ requestId, type: 'response', response: { type: 'list_sessions_response', sessions: [] } })
-    return
-  }
-
-  const sessions: Array<{
-    id: string
-    lastModified: number
-    fileSize: number
-    summary: string | undefined
-    gitBranch: string | undefined
-    worktree: undefined
-    isCurrentWorkspace: true
-  }> = []
-
-  try {
-    const entries = readdirSync(sessionDir)
-    for (const entry of entries) {
-      if (!entry.endsWith('.jsonl')) continue
-      if (entry.startsWith('agent-')) continue
-      const sessionId = entry.replace('.jsonl', '')
-      if (!UUID_RE.test(sessionId)) continue
-
-      const filePath = join(sessionDir, entry)
-      try {
-        const { head, tail, mtime, size } = readFileHeadAndTail(filePath)
-        const fullText = head + '\n' + tail
-        const summary = extractFirstUserPrompt(head) || extractStringValue(tail, 'customTitle') || extractStringValue(fullText, 'aiTitle')
-        const gitBranch = extractStringValue(fullText, 'gitBranch')
-        sessions.push({ id: sessionId, lastModified: mtime, fileSize: size, summary, gitBranch, worktree: undefined, isCurrentWorkspace: true })
-      } catch {
-        safeError('[ClaudeIPC] 读取会话失败:', entry)
-      }
-    }
-  } catch {
-    safeError('[ClaudeIPC] 列出会话失败，目录:', sessionDir)
-  }
-
-  sessions.sort((a, b) => b.lastModified - a.lastModified)
-  safeLog('[ClaudeIPC] 已列出会话:', sessions.length)
-  sendToWebview({ requestId, type: 'response', response: { type: 'list_sessions_response', sessions } })
-}
-
-function handleGetSessionRequest(requestId: string | undefined, sessionId: string | undefined, cwd: string): void {
-  if (!sessionId) {
-    sendToWebview({ requestId, type: 'response', response: { type: 'get_session_response', messages: [] } })
-    return
-  }
-
-  const sessionDir = getProjectSessionDir(cwd)
-  if (!sessionDir) {
-    sendToWebview({ requestId, type: 'response', response: { type: 'get_session_response', messages: [] } })
-    return
-  }
-
-  const filePath = join(sessionDir, `${sessionId}.jsonl`)
-  if (!existsSync(filePath)) {
-    sendToWebview({ requestId, type: 'response', response: { type: 'get_session_response', messages: [] } })
-    return
-  }
-
-  const messages: unknown[] = []
-  try {
-    const content = readFileSync(filePath, 'utf8')
-    for (const line of content.split('\n')) {
-      if (!line.trim()) continue
-      try {
-        const obj = JSON.parse(line)
-        if (obj.isSidechain || obj.isMeta) continue
-        if (obj.type === 'user' || obj.type === 'assistant' || obj.type === 'system') {
-          messages.push(obj)
-        }
-      } catch { /* skip malformed */ }
-    }
-  } catch {
-    safeError('[ClaudeIPC] 读取会话文件失败:', filePath)
-  }
-
-  safeLog('[ClaudeIPC] 已加载会话:', sessionId, '消息数:', messages.length)
-  sendToWebview({ requestId, type: 'response', response: { type: 'get_session_response', messages } })
 }
 
 // --- Webview Request Handler ---
@@ -852,7 +516,6 @@ async function handleWebviewRequest(msg: { requestId?: string; channelId?: strin
           }
         }
       })
-      // Flush queued messages
       for (const pending of pendingMessages) {
         sendToWebview(pending)
       }
@@ -901,12 +564,14 @@ async function handleWebviewRequest(msg: { requestId?: string; channelId?: strin
       break
     }
     case 'list_sessions_request': {
-      handleListSessionsRequest(requestId, currentCwd)
+      const sessions = await listSessions(currentCwd)
+      sendToWebview({ requestId, type: 'response', response: { type: 'list_sessions_response', sessions } })
       break
     }
     case 'get_session_request': {
       const sessionId = msg.request?.sessionId as string | undefined
-      handleGetSessionRequest(requestId, sessionId, currentCwd)
+      const messages = await getSessionMessages(sessionId || '', currentCwd)
+      sendToWebview({ requestId, type: 'response', response: { type: 'get_session_response', messages } })
       break
     }
     case 'open_file':
@@ -1005,19 +670,23 @@ async function handleWebviewRequest(msg: { requestId?: string; channelId?: strin
       break
     }
     case 'get_mcp_servers': {
-      handleGetMcpServers(requestId)
+      handleGetMcpServers(channels, sendToWebview, requestId)
       break
     }
     case 'set_mcp_server_enabled': {
-      handleMcpServerCommand(requestId, 'mcp_toggle', msg.request)
+      handleMcpServerCommand(channels, sendToWebview, requestId, 'mcp_toggle', msg.request)
       break
     }
     case 'reconnect_mcp_server': {
-      handleMcpServerCommand(requestId, 'mcp_reconnect', msg.request)
+      handleMcpServerCommand(channels, sendToWebview, requestId, 'mcp_reconnect', msg.request)
       break
     }
     case 'get_context_usage': {
-      handleContextUsageRequest(requestId)
+      sendToWebview({
+        requestId,
+        type: 'response',
+        response: { type: 'get_context_usage_response', usage: null }
+      })
       break
     }
     default: {
@@ -1033,28 +702,6 @@ async function handleWebviewRequest(msg: { requestId?: string; channelId?: strin
 }
 
 // --- Plugin Management ---
-
-async function runClaudeCliCommand(args: string[]): Promise<string> {
-  const binaryPath = await resolveClaudeBinary()
-  if (!binaryPath) throw new Error('未找到 Claude Code CLI')
-
-  return new Promise((resolve, reject) => {
-    const env = { ...process.env } as Record<string, string>
-    execFile(binaryPath, args, {
-      cwd: process.cwd(),
-      env,
-      windowsHide: true,
-      maxBuffer: 10 * 1024 * 1024
-    }, (error, stdout, _stderr) => {
-      if (error) {
-        safeError('[ClaudeIPC] CLI 命令失败:', args.join(' '), error.message)
-        reject(error)
-        return
-      }
-      resolve(stdout)
-    })
-  })
-}
 
 async function handleListPlugins(requestId: string | undefined, request: Record<string, unknown> | undefined): Promise<void> {
   try {
@@ -1091,7 +738,6 @@ async function handlePluginCommand(requestId: string | undefined, subcommand: st
     } else if (subcommand === 'uninstall') {
       args.push('uninstall', String(request?.pluginId || ''))
     } else {
-      // enable/disable
       args.push(subcommand, String(request?.pluginId || ''))
     }
 
@@ -1108,76 +754,6 @@ async function handlePluginCommand(requestId: string | undefined, subcommand: st
       response: { type: 'error', error: String(e) }
     })
   }
-}
-
-// --- MCP Server Management ---
-
-function handleGetMcpServers(requestId: string | undefined): void {
-  // Query the first active channel for MCP status
-  const firstChannel = channels.values().next().value
-  if (!firstChannel) {
-    sendToWebview({
-      requestId,
-      type: 'response',
-      response: { type: 'get_mcp_servers_response', mcpServers: [] }
-    })
-    return
-  }
-
-  // Send mcp_status query to claude.exe and wait for response
-  const queryId = `mcp_status_${Date.now()}`
-  const timeout = setTimeout(() => {
-    firstChannel.process.removeListener('message', handler)
-    sendToWebview({
-      requestId,
-      type: 'response',
-      response: { type: 'get_mcp_servers_response', mcpServers: [] }
-    })
-  }, 5000)
-
-  const handler = (msg: Record<string, unknown>) => {
-    if (msg.subtype === 'mcp_status' || msg.type === 'mcp_status') {
-      clearTimeout(timeout)
-      firstChannel.process.removeListener('message', handler)
-      const servers = (msg.mcpServers || []) as Array<{ name: string; status: string; error?: string; config?: unknown }>
-      sendToWebview({
-        requestId,
-        type: 'response',
-        response: {
-          type: 'get_mcp_servers_response',
-          mcpServers: servers.filter(s => s.name !== 'claude-vscode')
-        }
-      })
-    }
-  }
-
-  firstChannel.process.on('message', handler)
-  firstChannel.process.send({ type: 'query', subtype: 'mcp_status', queryId })
-}
-
-function handleMcpServerCommand(requestId: string | undefined, action: string, request: Record<string, unknown> | undefined): void {
-  const channelId = request?.channelId as string
-  const channel = channelId ? channels.get(channelId) : channels.values().next().value
-  if (!channel) {
-    sendToWebview({ requestId, type: 'response', response: { type: `${action}_response` } })
-    return
-  }
-
-  channel.process.send({
-    type: action,
-    serverName: request?.serverName,
-    enabled: request?.enabled
-  })
-
-  sendToWebview({ requestId, type: 'response', response: { type: `${action}_response` } })
-}
-
-function handleContextUsageRequest(requestId: string | undefined): void {
-  sendToWebview({
-    requestId,
-    type: 'response',
-    response: { type: 'get_context_usage_response', usage: null }
-  })
 }
 
 export async function shutdownClaude(): Promise<void> {

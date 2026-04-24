@@ -1,15 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import type { ExtensionInfo } from '../../../shared/types'
 
-export interface ExtensionInfo {
-  id: string
-  name: string
-  version: string
-  description: string
-  publisher: string
-  extensionPath: string
-  iconPath?: string
-}
+export type { ExtensionInfo }
 
 export const useExtensionStore = defineStore('extension', () => {
   const extensions = ref<ExtensionInfo[]>([])
