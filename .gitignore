@@ -6,3 +6,4 @@ out
 *.log*
 /extension-host/
 .tmp/
+electron.vite.config.1776824226124.mjs
