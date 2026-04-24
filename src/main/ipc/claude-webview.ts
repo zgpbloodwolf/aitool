@@ -198,21 +198,6 @@ async function handleLaunchClaude(channelId: string, cwd: string, _permissionMod
       }
     }
 
-    // 注入 modelUsage 让 webview 内置的上下文进度条生效
-    if (msg.type === 'result') {
-      const result = msg as Record<string, unknown>
-      if (result.total_cost_usd === undefined) {
-        result.total_cost_usd = 0
-      }
-      if (!result.modelUsage) {
-        const settings = getClaudeSettings()
-        const model = settings.env?.ANTHROPIC_MODEL || ''
-        result.modelUsage = {
-          [model]: { contextWindow: 128000, maxOutputTokens: 16384 }
-        }
-      }
-    }
-
     const tagged = { type: 'io_message', channelId, message: msg }
     if (!webviewInitialized) {
       pendingMessages.push(tagged)
