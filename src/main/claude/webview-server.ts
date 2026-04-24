@@ -222,6 +222,73 @@ function generateHostHtml(_extensionPath: string): string {
 <body>
   <div id="root" data-initial-auth-status="null"></div>
   <script src="/index.js"></script>
+  <script>
+    // Context usage percentage badge — injected next to "Show command menu" button
+    (function() {
+      var CONTEXT_USABLE = 128000 - 13000 - 16384;
+      var usedTokens = 0;
+
+      // Track token usage from stream events forwarded by main process
+      window.addEventListener('message', function(e) {
+        var data = e.data;
+        if (!data || data.type !== 'from-extension') return;
+        var msg = data.message && data.message.message ? data.message.message : null;
+        if (!msg || msg.type !== 'stream_event' || !msg.event) return;
+        var usage = msg.event.usage;
+        if (!usage) return;
+        var total = (usage.input_tokens || 0) + (usage.output_tokens || 0);
+        if (total > 0) usedTokens = total;
+        updateBadge();
+      });
+
+      var badge = null;
+      var inserted = false;
+
+      function updateBadge() {
+        if (usedTokens === 0) return;
+        var pct = Math.min(100, Math.round((usedTokens / CONTEXT_USABLE) * 100));
+        if (!badge) {
+          badge = document.createElement('span');
+          badge.style.cssText = 'font-size:11px;padding:1px 7px;border-radius:3px;margin-left:4px;font-weight:600;cursor:default;flex-shrink:0;vertical-align:middle;';
+        }
+        badge.textContent = pct + '%';
+        if (pct > 90) {
+          badge.style.background = 'rgba(243,139,168,0.2)';
+          badge.style.color = '#f38ba8';
+        } else if (pct > 70) {
+          badge.style.background = 'rgba(249,226,175,0.2)';
+          badge.style.color = '#f9e2af';
+        } else {
+          badge.style.background = 'rgba(137,180,250,0.15)';
+          badge.style.color = '#89b4fa';
+        }
+
+        if (!inserted) {
+          insertBadge();
+        }
+      }
+
+      function insertBadge() {
+        var btn = document.querySelector('[title="Show command menu (/)"]');
+        if (!btn || !btn.parentElement) return;
+        // Insert right after the command menu button
+        if (btn.nextSibling && btn.nextSibling !== badge) {
+          btn.parentElement.insertBefore(badge, btn.nextSibling);
+        } else if (!btn.nextSibling) {
+          btn.parentElement.appendChild(badge);
+        }
+        inserted = true;
+      }
+
+      // Retry insertion periodically (React may re-render the toolbar)
+      setInterval(function() {
+        if (badge && !document.contains(badge)) {
+          inserted = false;
+          insertBadge();
+        }
+      }, 2000);
+    })();
+  </script>
 </body>
 </html>`
 }
