@@ -147,7 +147,7 @@ function generateHostHtml(_extensionPath: string): string {
 
         setTimeout(function() {
           // Approach 1: Click the built-in "Session history" clock button
-          var btn = document.querySelector('[aria-label="Session history"]');
+          var btn = document.querySelector('[aria-label="Session history"]') || document.querySelector('[aria-label="会话历史"]');
           if (btn) { btn.click(); return; }
 
           // Approach 2: Walk React fiber tree to find commandRegistry
@@ -268,8 +268,52 @@ function generateHostHtml(_extensionPath: string): string {
         }
       }
 
+      // Translate webview toolbar tooltips to Chinese
+      var TOOLTIP_MAP = {
+        'Show command menu (/)': '显示命令菜单 (/)',
+        'Session history': '会话历史',
+        'New chat': '新建对话',
+        'Open in VS Code': '在 VS Code 中打开',
+        'Settings': '设置',
+        'Send message': '发送消息',
+        'Attach file': '附加文件',
+        'Add': '添加'
+      };
+      // Menu text translations (dynamically rendered content)
+      var TEXT_MAP = {
+        'Upload from computer': '从本地上传',
+        'Add context': '添加上下文',
+        'Modes': '模式',
+        '+ tab to switch': '+ Tab 切换',
+        'Ask before edits': '编辑前询问',
+        'Claude will ask for approval before making each edit': 'Claude 会在每次编辑前请求您的批准',
+        'Edit automatically': '自动编辑',
+        'Claude will edit your selected text or the whole file': 'Claude 会编辑您选中的文本或整个文件',
+        'Plan mode': '计划模式',
+        'Claude will explore the code and present a plan before editing': 'Claude 会在编辑前分析代码并提出方案',
+        'Bypass permissions': '跳过权限确认',
+        'Claude will not ask for approval before running potentially dangerous commands': 'Claude 会在运行潜在危险命令前不再请求批准'
+      };
+      function translateTooltips() {
+        Object.keys(TOOLTIP_MAP).forEach(function(en) {
+          var zh = TOOLTIP_MAP[en];
+          document.querySelectorAll('[title="' + en + '"]').forEach(function(el) { el.title = zh; });
+          document.querySelectorAll('[aria-label="' + en + '"]').forEach(function(el) { el.setAttribute('aria-label', zh); });
+        });
+        // Translate dynamic menu text nodes
+        Object.keys(TEXT_MAP).forEach(function(en) {
+          var zh = TEXT_MAP[en];
+          var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
+          while (walker.nextNode()) {
+            if (walker.currentNode.textContent.trim() === en) {
+              walker.currentNode.textContent = zh;
+            }
+          }
+        });
+      }
+
       function insertBadge() {
-        var btn = document.querySelector('[title="Show command menu (/)"]');
+        var btn = document.querySelector('[title="显示命令菜单 (/)"]') || document.querySelector('[title="Show command menu (/)"]');
         if (!btn || !btn.parentElement) return;
         // Insert right after the command menu button
         if (btn.nextSibling && btn.nextSibling !== badge) {
@@ -280,8 +324,23 @@ function generateHostHtml(_extensionPath: string): string {
         inserted = true;
       }
 
+      // Watch for dynamically added menu content (React renders on click)
+      var textObserver = new MutationObserver(function(mutations) {
+        var changed = false;
+        mutations.forEach(function(m) {
+          m.addedNodes.forEach(function(node) {
+            if (node.nodeType === Node.ELEMENT_NODE || node.nodeType === Node.TEXT_NODE) {
+              changed = true;
+            }
+          });
+        });
+        if (changed) translateTooltips();
+      });
+      textObserver.observe(document.body, { childList: true, subtree: true });
+
       // Retry insertion periodically (React may re-render the toolbar)
       setInterval(function() {
+        translateTooltips();
         if (badge && !document.contains(badge)) {
           inserted = false;
           insertBadge();
