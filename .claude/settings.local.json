@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(rm -rf *)",
+      "Bash(unzip -q /tmp/electron-v33.zip)",
+      "Bash(./electron.exe --version)",
+      "Bash(powershell.exe -Command 'Get-Process | Where-Object { $_.ProcessName -match '\\\\''electron'\\\\'' } | Stop-Process -Force -ErrorAction SilentlyContinue')",
+      "Bash(npm run *)",
+      "Bash(powershell -Command \"Get-Process electron -ErrorAction SilentlyContinue | Stop-Process -Force\")",
+      "Bash(node scripts/run-dev.js dev)",
+      "Bash(npx vue-tsc *)"
+    ]
+  }
+}
