@@ -32,8 +32,36 @@ const channelToTab = new Map<string, string>()
 // Pending resume: tabId → sessionId (injected into launch_claude when webview sends it)
 const pendingResume = new Map<string, string>()
 
+// 每个 tab 的上下文用量: tabId → usedTokens
+const tabTokens = ref<Map<string, number>>(new Map())
+const CONTEXT_USABLE = 128000 - 13000 - 16384
+
 let offWebviewMessage: (() => void) | null = null
 let tabCounter = 0
+let pollTimer: ReturnType<typeof setInterval> | null = null
+
+function getTabPercent(tabId: string): string {
+  const used = tabTokens.value.get(tabId)
+  if (!used) return ''
+  const pct = Math.min(100, Math.round((used / CONTEXT_USABLE) * 100))
+  return `${pct}%`
+}
+
+async function pollTokens(): Promise<void> {
+  try {
+    const all = await window.api.claudeGetContextUsage()
+    const t2c = new Map<string, string>()
+    for (const [chId, tId] of channelToTab) t2c.set(tId, chId)
+    const m = new Map<string, number>()
+    for (const tab of tabs.value) {
+      const chId = t2c.get(tab.id)
+      if (chId && all[chId]) {
+        m.set(tab.id, all[chId].inputTokens + all[chId].outputTokens)
+      }
+    }
+    tabTokens.value = m
+  } catch { /* ignore */ }
+}
 
 function generateTabId(): string {
   return `session-${Date.now()}-${++tabCounter}`
@@ -308,6 +336,7 @@ onMounted(() => {
   offWebviewMessage = window.api.onClaudeWebviewMessage((msg) => {
     forwardToWebview(msg)
   })
+  pollTimer = setInterval(pollTokens, 2000)
   initWebview()
 })
 
@@ -317,6 +346,7 @@ onBeforeUnmount(() => {
     offWebviewMessage()
     offWebviewMessage = null
   }
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
 })
 
 watch(() => extStore.activeExtensionId, () => {
@@ -360,6 +390,7 @@ watch(() => extStore.activeExtensionId, () => {
             @click="switchTab(tab.id)"
           >
             <span class="tab-label">{{ tab.label }}</span>
+            <span v-if="getTabPercent(tab.id)" class="tab-ctx" :class="{ warn: parseInt(getTabPercent(tab.id)) > 70, danger: parseInt(getTabPercent(tab.id)) > 90 }">{{ getTabPercent(tab.id) }}</span>
             <span class="tab-close" @click.stop="closeTab(tab.id)">×</span>
           </div>
         </div>
@@ -525,6 +556,26 @@ watch(() => extStore.activeExtensionId, () => {
 .tab-label {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.tab-ctx {
+  font-size: 10px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: rgba(137, 180, 250, 0.15);
+  color: #89b4fa;
+  flex-shrink: 0;
+  line-height: 16px;
+}
+
+.tab-ctx.warn {
+  background: rgba(249, 226, 175, 0.15);
+  color: #f9e2af;
+}
+
+.tab-ctx.danger {
+  background: rgba(243, 139, 168, 0.15);
+  color: #f38ba8;
 }
 
 .tab-close {

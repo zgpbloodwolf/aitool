@@ -34,6 +34,7 @@ interface WindowApi {
   }>>
   claudeGetModel: () => Promise<string>
   claudeDeleteSession: (sessionId: string) => Promise<boolean>
+  claudeGetContextUsage: () => Promise<Record<string, { inputTokens: number; outputTokens: number }>>
   claudeResumeSession: (channelId: string | null, sessionId: string) => Promise<{ success: boolean; error?: string; channelId?: string }>
   claudeStartWebviewServer: (extensionPath: string) => Promise<number>
   claudeWebviewFromWebview: (msg: unknown) => void

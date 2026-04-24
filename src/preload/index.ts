@@ -34,6 +34,8 @@ const api = {
     ipcRenderer.invoke('claude:get-model'),
   claudeDeleteSession: (sessionId: string): Promise<boolean> =>
     ipcRenderer.invoke('claude:delete-session', sessionId),
+  claudeGetContextUsage: (): Promise<Record<string, { inputTokens: number; outputTokens: number }>> =>
+    ipcRenderer.invoke('claude:get-context-usage'),
   claudeResumeSession: (channelId: string | null, sessionId: string): Promise<{ success: boolean; error?: string; channelId?: string }> =>
     ipcRenderer.invoke('claude:resume-session', channelId, sessionId),
   claudeWebviewFromWebview: (msg: unknown): void =>

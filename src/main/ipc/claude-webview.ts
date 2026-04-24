@@ -29,6 +29,8 @@ interface Channel {
   pendingToolUse: PendingToolUse | null
   permissionResolvers: Map<string, PermissionResolver>
   sentPermissionRequests: Set<string>
+  totalInputTokens: number
+  totalOutputTokens: number
 }
 
 const channels = new Map<string, Channel>()
@@ -125,7 +127,7 @@ async function handleLaunchClaude(channelId: string, cwd: string, _permissionMod
   const proc = new ClaudeProcessManager()
 
   proc.on('message', (msg: Record<string, unknown>) => {
-    safeLog('[ClaudeIPC] claude.exe 输出 [' + channelId + ']:', JSON.stringify(msg).slice(0, 150))
+    safeLog('[ClaudeIPC] claude.exe 输出 [' + channelId + ']:', JSON.stringify(msg).slice(0, msg.type === 'result' ? 1000 : 150))
 
     const channel = channels.get(channelId)
     if (channel && channel.permissionMode === 'plan') {
@@ -184,6 +186,33 @@ async function handleLaunchClaude(channelId: string, cwd: string, _permissionMod
       }
     }
 
+    // 追踪 token 用量
+    if (msg.type === 'stream_event') {
+      const usage = (msg.event as Record<string, unknown>)?.usage as { input_tokens?: number; output_tokens?: number } | undefined
+      if (usage) {
+        const ch = channels.get(channelId)
+        if (ch) {
+          if (usage.input_tokens) ch.totalInputTokens = usage.input_tokens
+          if (usage.output_tokens) ch.totalOutputTokens = usage.output_tokens
+        }
+      }
+    }
+
+    // 注入 modelUsage 让 webview 内置的上下文进度条生效
+    if (msg.type === 'result') {
+      const result = msg as Record<string, unknown>
+      if (result.total_cost_usd === undefined) {
+        result.total_cost_usd = 0
+      }
+      if (!result.modelUsage) {
+        const settings = getClaudeSettings()
+        const model = settings.env?.ANTHROPIC_MODEL || ''
+        result.modelUsage = {
+          [model]: { contextWindow: 128000, maxOutputTokens: 16384 }
+        }
+      }
+    }
+
     const tagged = { type: 'io_message', channelId, message: msg }
     if (!webviewInitialized) {
       pendingMessages.push(tagged)
@@ -213,7 +242,9 @@ async function handleLaunchClaude(channelId: string, cwd: string, _permissionMod
     planText: '',
     pendingToolUse: null,
     permissionResolvers: new Map(),
-    sentPermissionRequests: new Set()
+    sentPermissionRequests: new Set(),
+    totalInputTokens: 0,
+    totalOutputTokens: 0
   })
   launchingChannels.delete(channelId)
 }
@@ -431,6 +462,14 @@ export function registerClaudeWebviewHandlers(): void {
 
   ipcMain.handle('claude:get-model', async () => {
     return getModelSetting()
+  })
+
+  ipcMain.handle('claude:get-context-usage', async () => {
+    const result: Record<string, { inputTokens: number; outputTokens: number }> = {}
+    for (const [channelId, ch] of channels) {
+      result[channelId] = { inputTokens: ch.totalInputTokens, outputTokens: ch.totalOutputTokens }
+    }
+    return result
   })
 
   ipcMain.handle('claude:delete-session', async (_event, sessionId: string) => {
@@ -690,10 +729,25 @@ async function handleWebviewRequest(msg: { requestId?: string; channelId?: strin
       break
     }
     case 'get_context_usage': {
+      // 从活跃频道收集 token 用量
+      let totalInput = 0
+      let totalOutput = 0
+      for (const ch of channels.values()) {
+        totalInput += ch.totalInputTokens
+        totalOutput += ch.totalOutputTokens
+      }
       sendToWebview({
         requestId,
         type: 'response',
-        response: { type: 'get_context_usage_response', usage: null }
+        response: {
+          type: 'get_context_usage_response',
+          usage: {
+            input_tokens: totalInput,
+            output_tokens: totalOutput,
+            cache_creation_input_tokens: 0,
+            cache_read_input_tokens: 0
+          }
+        }
       })
       break
     }

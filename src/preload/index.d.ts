@@ -21,6 +21,7 @@ declare global {
       claudeListSessions: () => Promise<SessionInfo[]>
       claudeGetModel: () => Promise<string>
       claudeDeleteSession: (sessionId: string) => Promise<boolean>
+      claudeGetContextUsage: () => Promise<Record<string, { inputTokens: number; outputTokens: number }>>
       claudeResumeSession: (channelId: string | null, sessionId: string) => Promise<{ success: boolean; error?: string; channelId?: string }>
       claudeWebviewFromWebview: (msg: unknown) => void
       onClaudeMessage: (callback: (msg: unknown) => void) => (() => void)
