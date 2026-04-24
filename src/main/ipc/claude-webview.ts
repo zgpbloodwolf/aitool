@@ -429,6 +429,10 @@ export function registerClaudeWebviewHandlers(): void {
     return await listSessions(currentCwd)
   })
 
+  ipcMain.handle('claude:get-model', async () => {
+    return getModelSetting()
+  })
+
   ipcMain.handle('claude:resume-session', async (_event, channelId: string, sessionId: string) => {
     safeLog('[ClaudeIPC] 正在恢复会话:', sessionId, '频道:', channelId)
 

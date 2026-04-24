@@ -32,6 +32,7 @@ interface WindowApi {
     summary: string | undefined
     gitBranch: string | undefined
   }>>
+  claudeGetModel: () => Promise<string>
   claudeResumeSession: (channelId: string | null, sessionId: string) => Promise<{ success: boolean; error?: string; channelId?: string }>
   claudeStartWebviewServer: (extensionPath: string) => Promise<number>
   claudeWebviewFromWebview: (msg: unknown) => void

@@ -30,6 +30,8 @@ const api = {
     ipcRenderer.invoke('claude:start-webview-server', extensionPath),
   claudeListSessions: (): Promise<SessionInfo[]> =>
     ipcRenderer.invoke('claude:list-sessions'),
+  claudeGetModel: (): Promise<string> =>
+    ipcRenderer.invoke('claude:get-model'),
   claudeResumeSession: (channelId: string | null, sessionId: string): Promise<{ success: boolean; error?: string; channelId?: string }> =>
     ipcRenderer.invoke('claude:resume-session', channelId, sessionId),
   claudeWebviewFromWebview: (msg: unknown): void =>
