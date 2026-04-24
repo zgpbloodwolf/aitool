@@ -6,7 +6,7 @@ import { resolveClaudeBinary } from '../claude/binary-resolver'
 import { startWebviewServer } from '../claude/webview-server'
 import { addAllowedRoot } from './filesystem'
 import { safeLog, safeError } from '../claude/logger'
-import { listSessions, getSessionMessages } from '../claude/session-store'
+import { listSessions, getSessionMessages, deleteSession } from '../claude/session-store'
 import { discoverSkills, runClaudeCliCommand } from '../claude/plugin-manager'
 import { handleGetMcpServers, handleMcpServerCommand } from '../claude/mcp-manager'
 
@@ -431,6 +431,10 @@ export function registerClaudeWebviewHandlers(): void {
 
   ipcMain.handle('claude:get-model', async () => {
     return getModelSetting()
+  })
+
+  ipcMain.handle('claude:delete-session', async (_event, sessionId: string) => {
+    return await deleteSession(sessionId, currentCwd)
   })
 
   ipcMain.handle('claude:resume-session', async (_event, channelId: string, sessionId: string) => {

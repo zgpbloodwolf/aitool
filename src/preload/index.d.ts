@@ -20,6 +20,7 @@ declare global {
       claudeStartWebviewServer: (extensionPath: string) => Promise<number>
       claudeListSessions: () => Promise<SessionInfo[]>
       claudeGetModel: () => Promise<string>
+      claudeDeleteSession: (sessionId: string) => Promise<boolean>
       claudeResumeSession: (channelId: string | null, sessionId: string) => Promise<{ success: boolean; error?: string; channelId?: string }>
       claudeWebviewFromWebview: (msg: unknown) => void
       onClaudeMessage: (callback: (msg: unknown) => void) => (() => void)

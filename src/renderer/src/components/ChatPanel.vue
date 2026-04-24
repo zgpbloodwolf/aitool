@@ -199,6 +199,15 @@ function closeSessionHistory(): void {
   showSessionHistory.value = false
 }
 
+async function deleteSessionById(sessionId: string): Promise<void> {
+  try {
+    const ok = await window.api.claudeDeleteSession(sessionId)
+    if (ok) {
+      sessionList.value = sessionList.value.filter(s => s.id !== sessionId)
+    }
+  } catch { /* ignore */ }
+}
+
 const sortedSessions = computed(() => {
   return [...sessionList.value].sort((a, b) => b.lastModified - a.lastModified)
 })
@@ -394,6 +403,7 @@ watch(() => extStore.activeExtensionId, () => {
                   <span class="session-time">{{ formatDate(s.lastModified) }}</span>
                   <span v-if="s.gitBranch" class="session-branch">{{ s.gitBranch }}</span>
                   <span class="session-size">{{ formatSize(s.fileSize) }}</span>
+                  <button class="session-delete" title="删除会话" @click.stop="deleteSessionById(s.id)">&#x1F5D1;</button>
                 </div>
               </div>
             </div>
@@ -783,6 +793,28 @@ watch(() => extStore.activeExtensionId, () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.session-delete {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: #6c7086;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.session-item:hover .session-delete {
+  opacity: 1;
+}
+
+.session-delete:hover {
+  color: #f38ba8;
+  background: rgba(243, 139, 168, 0.1);
 }
 
 .session-slide-enter-active,

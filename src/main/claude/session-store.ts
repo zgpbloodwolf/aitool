@@ -1,4 +1,4 @@
-import { readFile, stat, readdir, open } from 'fs/promises'
+import { readFile, stat, readdir, open, unlink } from 'fs/promises'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { safeLog, safeError } from './logger'
@@ -139,4 +139,16 @@ export async function getSessionMessages(sessionId: string, cwd: string): Promis
 
   safeLog('[SessionStore] 已加载会话:', sessionId, '消息数:', messages.length)
   return messages
+}
+
+export async function deleteSession(sessionId: string, cwd: string): Promise<boolean> {
+  const sessionDir = getProjectSessionDir(cwd)
+  if (!sessionDir) return false
+
+  const filePath = join(sessionDir, `${sessionId}.jsonl`)
+  if (!existsSync(filePath)) return false
+
+  await unlink(filePath)
+  safeLog('[SessionStore] 已删除会话:', sessionId)
+  return true
 }
