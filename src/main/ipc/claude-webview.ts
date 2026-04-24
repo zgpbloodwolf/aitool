@@ -1,5 +1,5 @@
 import { ipcMain, BrowserWindow } from 'electron'
-import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, readFileSync, statSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { ClaudeProcessManager } from '../claude/process-manager'
 import { resolveClaudeBinary } from '../claude/binary-resolver'
@@ -48,13 +48,32 @@ interface ClaudeSettings {
   [key: string]: unknown
 }
 
+const SETTINGS_CACHE_TTL_MS = 5000
+let settingsCache: { data: ClaudeSettings; mtimeMs: number; timestamp: number } | null = null
+
 function getClaudeSettings(): ClaudeSettings {
   try {
     const homeDir = process.env.USERPROFILE || process.env.HOME || ''
     const settingsPath = join(homeDir, '.claude', 'settings.json')
-    if (existsSync(settingsPath)) {
-      return JSON.parse(readFileSync(settingsPath, 'utf-8'))
+
+    if (settingsCache && (Date.now() - settingsCache.timestamp < SETTINGS_CACHE_TTL_MS)) {
+      try {
+        const { mtimeMs } = statSync(settingsPath)
+        if (mtimeMs === settingsCache.mtimeMs) return settingsCache.data
+      } catch {
+        settingsCache = null
+        return {}
+      }
     }
+
+    if (existsSync(settingsPath)) {
+      const content = readFileSync(settingsPath, 'utf-8')
+      const { mtimeMs } = statSync(settingsPath)
+      const data = JSON.parse(content)
+      settingsCache = { data, mtimeMs, timestamp: Date.now() }
+      return data
+    }
+    settingsCache = { data: {}, mtimeMs: 0, timestamp: Date.now() }
   } catch { /* ignore */ }
   return {}
 }
@@ -198,7 +217,13 @@ async function handleLaunchClaude(channelId: string, cwd: string, _permissionMod
       }
     }
 
-    const tagged = { type: 'io_message', channelId, message: msg }
+    let messageCopy: typeof msg
+    try {
+      messageCopy = structuredClone(msg)
+    } catch {
+      messageCopy = msg
+    }
+    const tagged = { type: 'io_message', channelId, message: messageCopy }
     if (!webviewInitialized) {
       pendingMessages.push(tagged)
       return
