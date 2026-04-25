@@ -73,6 +73,9 @@ let statusTimer: ReturnType<typeof setTimeout> | null = null
 // Map channelId (from webview launch_claude) → tabId (for routing responses)
 const channelToTab = new Map<string, string>()
 
+// D-14: 标签状态指示器 — running(运行中) / waiting(等待权限) / idle(空闲)
+const tabStatuses = ref<Map<string, 'running' | 'waiting' | 'idle'>>(new Map())
+
 // Pending resume: tabId → sessionId (injected into launch_claude when webview sends it)
 const pendingResume = new Map<string, string>()
 
@@ -107,14 +110,39 @@ function clearStatus(): void {
   }
 }
 
-function handleSystemMessage(msg: Record<string, unknown>, _channelId: string): void {
+async function handleSystemMessage(msg: Record<string, unknown>, _channelId: string): Promise<void> {
   const subtype = msg.subtype as string
+  const tabId = channelToTab.get(_channelId)
+
   switch (subtype) {
-    case 'init':
+    case 'init': {
       showStatus('Claude 会话已就绪', 'info', 2000)
+      // D-14: init 事件表示 Claude 开始运行
+      if (tabId) tabStatuses.value.set(tabId, 'running')
+
+      // D-13: 提取智能标签名
+      let newLabel: string | null = null
+      if (typeof msg.summary === 'string' && msg.summary.trim()) {
+        newLabel = msg.summary.trim().slice(0, 20)
+      } else if (typeof msg.session_id === 'string') {
+        try {
+          const sessions = await window.api.claudeListSessions()
+          const match = sessions.find(s => s.id === msg.session_id)
+          if (match?.summary) {
+            newLabel = match.summary.trim().slice(0, 20)
+          }
+        } catch { /* 获取失败不影响流程 */ }
+      }
+      if (newLabel && tabId) {
+        const tab = tabs.value.find(t => t.id === tabId)
+        if (tab) tab.label = newLabel
+      }
       break
+    }
     case 'hook_started':
       showStatus('正在运行启动钩子...', 'info')
+      // D-14: hook 启动表示 Claude 正在运行
+      if (tabId) tabStatuses.value.set(tabId, 'running')
       break
     case 'hook_response':
       clearStatus()
@@ -132,8 +160,12 @@ function handleSystemMessage(msg: Record<string, unknown>, _channelId: string): 
     }
     case 'result':
       clearStatus()
+      // D-14: result 事件表示 Claude 完成任务，回到空闲
+      if (tabId) tabStatuses.value.set(tabId, 'idle')
       break
     default:
+      // D-14: 其他 system 消息表示正在处理中
+      if (tabId) tabStatuses.value.set(tabId, 'running')
       break
   }
 }
@@ -344,6 +376,12 @@ function forwardToWebview(msg: unknown) {
   // Intercept system messages from claude.exe for status display
   if (m?.message?.type === 'system' && m.channelId) {
     handleSystemMessage(m.message as Record<string, unknown>, m.channelId)
+  }
+
+  // D-14: 检测权限请求消息，设置 waiting 状态
+  if (m?.message?.type === 'request' && m.channelId) {
+    const reqTabId = channelToTab.get(m.channelId)
+    if (reqTabId) tabStatuses.value.set(reqTabId, 'waiting')
   }
 
   if (m?.channelId) {
@@ -624,6 +662,7 @@ defineExpose({
             }"
             draggable="true"
             @click="switchTab(tab.id)"
+            @mousedown.middle.prevent="closeTab(tab.id)"
             @dragstart="onDragStart($event, tab.id)"
             @dragover.prevent="onDragOver($event)"
             @dragenter.prevent="onDragEnter(tab.id)"
@@ -631,6 +670,7 @@ defineExpose({
             @drop="onDrop($event, tab.id)"
             @dragend="onDragEnd"
           >
+            <span class="tab-status-dot" :class="tabStatuses.get(tab.id) || 'idle'" />
             <span class="tab-label">{{ tab.label }}</span>
             <span class="tab-close" @click.stop="closeTab(tab.id)">×</span>
           </div>
@@ -872,6 +912,28 @@ defineExpose({
 .tab-label {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* D-14: 标签状态指示器圆点 */
+.tab-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tab-status-dot.running {
+  background: var(--success, #a6e3a1);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.tab-status-dot.waiting {
+  background: var(--warning, #fab387);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.tab-status-dot.idle {
+  background: var(--text-muted, #6c7086);
 }
 
 .tab-close {
