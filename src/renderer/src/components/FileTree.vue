@@ -59,7 +59,7 @@ export default defineComponent({
   },
   template: `
     <div class="file-tree">
-      <template v-for="entry in workspace.files" :key="entry.path">
+      <template v-for="entry in workspace.filteredFiles" :key="entry.path">
         <div
           class="file-entry"
           :class="{ selected: workspace.selectedFile === entry.path }"
@@ -78,6 +78,9 @@ export default defineComponent({
           />
         </template>
       </template>
+      <div v-if="workspace.filteredFiles.length === 0 && workspace.filterText" class="filter-empty">
+        无匹配文件
+      </div>
     </div>
   `
 })
@@ -117,5 +120,13 @@ export default defineComponent({
   margin-left: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* D-19: 搜索无匹配时的空状态提示 */
+.filter-empty {
+  padding: 12px 16px;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
 }
 </style>

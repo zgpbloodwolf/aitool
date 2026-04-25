@@ -12,6 +12,42 @@ const extStore = useExtensionStore()
 const workspaceStore = useWorkspaceStore()
 const sidebarVisible = ref(true)
 
+// D-17: 侧边栏拖拽宽度 + 持久化
+const SIDEBAR_WIDTH_KEY = 'aitools-sidebar-width'
+const sidebarWidth = ref(parseInt(localStorage.getItem(SIDEBAR_WIDTH_KEY) || '260'))
+const isResizing = ref(false)
+
+function startResize(e: MouseEvent): void {
+  isResizing.value = true
+  const startX = e.clientX
+  const startWidth = sidebarWidth.value
+
+  // 拖拽期间禁用 iframe 指针事件（防止 iframe 拦截 mousemove）
+  const iframes = document.querySelectorAll('.webview-iframe')
+  iframes.forEach((iframe) => {
+    ;(iframe as HTMLElement).style.pointerEvents = 'none'
+  })
+
+  function onMouseMove(e: MouseEvent): void {
+    const newWidth = Math.max(200, Math.min(500, startWidth + (e.clientX - startX)))
+    sidebarWidth.value = newWidth
+  }
+
+  function onMouseUp(): void {
+    isResizing.value = false
+    localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth.value))
+    document.removeEventListener('mousemove', onMouseMove)
+    document.removeEventListener('mouseup', onMouseUp)
+    // 恢复 iframe 指针事件
+    iframes.forEach((iframe) => {
+      ;(iframe as HTMLElement).style.pointerEvents = ''
+    })
+  }
+
+  document.addEventListener('mousemove', onMouseMove)
+  document.addEventListener('mouseup', onMouseUp)
+}
+
 // D-05: ChatPanel ref 供快捷键调用
 const chatPanelRef = ref<InstanceType<typeof ChatPanel> | null>(null)
 
@@ -125,7 +161,17 @@ onBeforeUnmount(() => {
   <div class="app-layout">
     <TitleBar @toggle-sidebar="sidebarVisible = !sidebarVisible" />
     <div class="main-content">
-      <Sidebar v-if="sidebarVisible" @open-folder="handleOpenFolder" />
+      <Sidebar
+        v-if="sidebarVisible"
+        :style="{ width: sidebarWidth + 'px', minWidth: sidebarWidth + 'px' }"
+        @open-folder="handleOpenFolder"
+      />
+      <div
+        v-if="sidebarVisible"
+        class="resize-handle"
+        :class="{ active: isResizing }"
+        @mousedown="startResize"
+      />
       <div class="center-area">
         <!-- D-03: 扩展加载失败提示 -->
         <div v-if="extStore.error" class="ext-error-banner">
@@ -199,5 +245,18 @@ onBeforeUnmount(() => {
 
 .ext-retry-btn:hover {
   background: var(--accent-hover);
+}
+
+/* D-17: 侧边栏拖拽手柄 */
+.resize-handle {
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.resize-handle:hover,
+.resize-handle.active {
+  background: var(--accent);
 }
 </style>

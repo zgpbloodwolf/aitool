@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 
 export interface FileEntry {
   name: string
@@ -104,6 +104,59 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const filterText = ref('')
   const favorites = ref<string[]>(JSON.parse(localStorage.getItem('aitools-favorites') || '[]'))
 
+  // 过滤后的文件列表：搜索框输入时实时过滤文件树
+  const filteredFiles = computed(() => {
+    if (!filterText.value.trim()) return files.value
+    return filterFiles(files.value, filterText.value.trim().toLowerCase())
+  })
+
+  function filterFiles(entries: FileEntry[], query: string): FileEntry[] {
+    const result: FileEntry[] = []
+    for (const entry of entries) {
+      if (entry.isDirectory) {
+        // 递归过滤子目录
+        const filteredChildren = entry.children ? filterFiles(entry.children, query) : []
+        if (filteredChildren.length > 0 || entry.name.toLowerCase().includes(query)) {
+          result.push({
+            ...entry,
+            children:
+              filteredChildren.length > 0
+                ? filteredChildren
+                : entry.children
+                  ? entry.children.filter((c) => c.name.toLowerCase().includes(query))
+                  : undefined
+          })
+        }
+      } else {
+        if (entry.name.toLowerCase().includes(query)) {
+          result.push(entry)
+        }
+      }
+    }
+    return result
+  }
+
+  // 收藏目录 CRUD
+  function addFavorite(path: string): void {
+    if (!favorites.value.includes(path)) {
+      favorites.value.push(path)
+      localStorage.setItem('aitools-favorites', JSON.stringify(favorites.value))
+    }
+  }
+
+  function removeFavorite(path: string): void {
+    favorites.value = favorites.value.filter((p) => p !== path)
+    localStorage.setItem('aitools-favorites', JSON.stringify(favorites.value))
+  }
+
+  async function openFavorite(path: string): Promise<void> {
+    rootPath.value = path
+    await window.api.claudeSetCwd(path)
+    expandedDirs.value.clear()
+    files.value = await loadDirectory(path)
+    await startWatch()
+  }
+
   return {
     rootPath,
     files,
@@ -111,10 +164,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     selectedFile,
     filterText,
     favorites,
+    filteredFiles,
     openFolder,
     toggleDir,
     selectFile,
     startWatch,
-    stopWatch
+    stopWatch,
+    addFavorite,
+    removeFavorite,
+    openFavorite
   }
 })
