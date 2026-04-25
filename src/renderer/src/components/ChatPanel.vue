@@ -77,7 +77,12 @@ const channelToTab = new Map<string, string>()
 const pendingResume = new Map<string, string>()
 
 let offWebviewMessage: (() => void) | null = null
+let offProcessCrashed: (() => void) | null = null
+let offProcessUnresponsive: (() => void) | null = null
 let tabCounter = 0
+
+// D-11: 无响应的 channel 集合，用于显示重启按钮
+const unresponsiveChannels = ref<Set<string>>(new Set())
 
 function generateTabId(): string {
   return `session-${Date.now()}-${++tabCounter}`
@@ -400,6 +405,40 @@ onMounted(() => {
   offWebviewMessage = window.api.onClaudeWebviewMessage((msg) => {
     forwardToWebview(msg)
   })
+
+  // D-10: 进程崩溃自动恢复
+  offProcessCrashed = window.api.onProcessCrashed(async (data) => {
+    const { channelId, canRecover } = data
+    const tabId = channelToTab.get(channelId)
+    if (!tabId) return
+
+    if (canRecover) {
+      showStatus('进程已崩溃，正在恢复...', 'warning')
+      try {
+        const result = await window.api.claudeRecoverProcess(channelId)
+        if (result.success) {
+          showStatus('已恢复对话', 'success', 3000)
+        } else {
+          showStatus('恢复失败: ' + (result.error || '未知错误'), 'error')
+        }
+      } catch (e) {
+        showStatus('恢复失败: ' + String(e), 'error')
+      }
+    } else {
+      showStatus('进程已崩溃，无法自动恢复', 'error')
+    }
+  })
+
+  // D-11: 进程无响应 — 显示重启按钮
+  offProcessUnresponsive = window.api.onProcessUnresponsive(async (data) => {
+    const { channelId } = data
+    const tabId = channelToTab.get(channelId)
+    if (!tabId) return
+
+    unresponsiveChannels.value.add(channelId)
+    showStatus('进程无响应，可能已挂死', 'error')
+  })
+
   initWebview()
 })
 
@@ -408,6 +447,14 @@ onBeforeUnmount(() => {
   if (offWebviewMessage) {
     offWebviewMessage()
     offWebviewMessage = null
+  }
+  if (offProcessCrashed) {
+    offProcessCrashed()
+    offProcessCrashed = null
+  }
+  if (offProcessUnresponsive) {
+    offProcessUnresponsive()
+    offProcessUnresponsive = null
   }
 })
 
@@ -500,6 +547,35 @@ function hasActiveChannels(): boolean {
   return channelToTab.size > 0
 }
 
+// D-10/D-11: 进程崩溃和无响应处理
+
+/** 当前活跃 tab 是否有无响应的 channel */
+const currentUnresponsiveChannelId = computed(() => {
+  for (const channelId of unresponsiveChannels.value) {
+    if (channelToTab.get(channelId) === activeTabId.value) {
+      return channelId
+    }
+  }
+  return null
+})
+const currentUnresponsive = computed(() => !!currentUnresponsiveChannelId.value)
+
+/** 手动重启挂死进程 */
+async function restartUnresponsiveProcess(channelId: string): Promise<void> {
+  showStatus('正在重启进程...', 'warning')
+  try {
+    const result = await window.api.claudeRecoverProcess(channelId)
+    if (result.success) {
+      unresponsiveChannels.value.delete(channelId)
+      showStatus('进程已重启', 'success', 3000)
+    } else {
+      showStatus('重启失败: ' + (result.error || '未知错误'), 'error')
+    }
+  } catch (e) {
+    showStatus('重启失败: ' + String(e), 'error')
+  }
+}
+
 /** 暴露方法给父组件（快捷键和标签操作需要） */
 defineExpose({
   addNewTab,
@@ -582,6 +658,17 @@ defineExpose({
           sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
           allow="clipboard-read; clipboard-write"
         />
+      </div>
+
+      <!-- D-11: 进程无响应覆盖层 -->
+      <div v-if="currentUnresponsive" class="unresponsive-overlay">
+        <p class="unresponsive-text">进程无响应</p>
+        <button
+          class="retry-btn"
+          @click="restartUnresponsiveProcess(currentUnresponsiveChannelId!)"
+        >
+          重启进程
+        </button>
       </div>
 
       <!-- Session History Panel -->
@@ -864,6 +951,30 @@ defineExpose({
 .webview-iframe.hidden {
   visibility: hidden;
   pointer-events: none;
+}
+
+/* D-11: 进程无响应覆盖层 */
+.unresponsive-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 32px 48px;
+  background: rgba(24, 24, 37, 0.95);
+  border: 1px solid #313244;
+  border-radius: 8px;
+  z-index: 15;
+}
+
+.unresponsive-text {
+  color: #f38ba8;
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
 }
 
 /* Status Overlay */
