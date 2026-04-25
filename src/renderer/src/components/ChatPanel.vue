@@ -199,7 +199,11 @@ async function handleDownloadExtension(): Promise<void> {
 
     if (result) {
       downloadProgress.value = null
-      // 下载成功，重新初始化
+      // 下载成功，重新加载扩展列表并初始化
+      await extStore.loadExtensions()
+      if (!extStore.activeExtensionId && extStore.extensions.length > 0) {
+        extStore.activeExtensionId = extStore.extensions[0].id
+      }
       resetAndRetry()
     } else {
       downloadProgress.value = null
@@ -722,8 +726,14 @@ defineExpose({
       <div class="empty-content">
         <div class="empty-icon">&#x1F916;</div>
         <h2>欢迎使用 AI 工具</h2>
-        <p>从标题栏选择扩展开始对话</p>
-        <p class="hint">支持：Claude Code、Codex</p>
+        <div v-if="downloading" class="download-progress">
+          <div class="download-spinner" />
+          <p>{{ downloadProgress || '正在下载...' }}</p>
+        </div>
+        <template v-else>
+          <p>未检测到 Claude Code 扩展，需要先下载</p>
+          <button class="retry-btn" @click="handleDownloadExtension">下载 Claude Code 扩展</button>
+        </template>
       </div>
     </div>
     <div v-else-if="loading" class="chat-empty">
