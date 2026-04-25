@@ -452,7 +452,8 @@ defineExpose({
   switchTab,
   switchToNextTab,
   switchToPrevTab,
-  hasActiveChannels
+  hasActiveChannels,
+  activeTabId
 })
 </script>
 

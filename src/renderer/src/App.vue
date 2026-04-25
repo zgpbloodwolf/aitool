@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useExtensionStore } from './stores/extension'
 import { useWorkspaceStore } from './stores/workspace'
 import TitleBar from './components/TitleBar.vue'
@@ -67,8 +67,57 @@ function handleCancel(): void {
   pendingAction.value = null
 }
 
+/**
+ * D-05: 全局键盘快捷键处理
+ * Ctrl+N 新建对话, Ctrl+W 关闭标签, Ctrl+B 切换侧边栏
+ * Ctrl+Tab 下一个标签, Ctrl+Shift+Tab 上一个标签
+ */
+function handleGlobalKeydown(e: KeyboardEvent): void {
+  // Ctrl+Tab 必须在最前面 preventDefault，防止浏览器默认行为拦截
+  if (e.ctrlKey && e.key === 'Tab') {
+    e.preventDefault()
+    if (e.shiftKey) {
+      chatPanelRef.value?.switchToPrevTab()
+    } else {
+      chatPanelRef.value?.switchToNextTab()
+    }
+    return
+  }
+
+  // Ctrl+N: 新建对话标签（Ctrl+Shift+N 降级为新建标签页）
+  if (e.ctrlKey && e.key === 'n') {
+    e.preventDefault()
+    chatPanelRef.value?.addNewTab()
+    return
+  }
+
+  // Ctrl+W: 关闭当前标签
+  if (e.ctrlKey && e.key === 'w') {
+    e.preventDefault()
+    const activeId = chatPanelRef.value?.activeTabId
+    if (activeId) {
+      chatPanelRef.value?.closeTab(activeId)
+    }
+    return
+  }
+
+  // Ctrl+B: 切换侧边栏显示/隐藏
+  if (e.ctrlKey && e.key === 'b') {
+    e.preventDefault()
+    sidebarVisible.value = !sidebarVisible.value
+    return
+  }
+}
+
 onMounted(() => {
   extStore.loadExtensions()
+  // D-05: 注册全局键盘快捷键
+  document.addEventListener('keydown', handleGlobalKeydown)
+})
+
+onBeforeUnmount(() => {
+  // D-05: 清理全局键盘快捷键
+  document.removeEventListener('keydown', handleGlobalKeydown)
 })
 </script>
 
