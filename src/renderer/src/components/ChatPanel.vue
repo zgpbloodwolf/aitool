@@ -440,6 +440,61 @@ function switchToPrevTab(): void {
   activeTabId.value = tabs.value[prevIdx].id
 }
 
+// D-16: 标签拖拽排序状态
+const draggedTabId = ref<string | null>(null)
+const dragOverTabId = ref<string | null>(null)
+
+/** D-16: 拖拽开始 */
+function onDragStart(e: DragEvent, tabId: string): void {
+  draggedTabId.value = tabId
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move'
+  }
+}
+
+/** D-16: 拖拽经过 */
+function onDragOver(e: DragEvent): void {
+  if (e.dataTransfer) {
+    e.dataTransfer.dropEffect = 'move'
+  }
+}
+
+/** D-16: 拖拽进入目标标签 */
+function onDragEnter(tabId: string): void {
+  dragOverTabId.value = tabId
+}
+
+/** D-16: 拖拽离开目标标签 */
+function onDragLeave(tabId: string): void {
+  if (dragOverTabId.value === tabId) {
+    dragOverTabId.value = null
+  }
+}
+
+/** D-16: 拖拽放置 — 执行标签数组重排 */
+function onDrop(_e: DragEvent, targetTabId: string): void {
+  if (!draggedTabId.value || draggedTabId.value === targetTabId) {
+    onDragEnd()
+    return
+  }
+  const fromIdx = tabs.value.findIndex((t) => t.id === draggedTabId.value)
+  const toIdx = tabs.value.findIndex((t) => t.id === targetTabId)
+  if (fromIdx === -1 || toIdx === -1) {
+    onDragEnd()
+    return
+  }
+  // 从原位置移除并插入到目标位置
+  const [moved] = tabs.value.splice(fromIdx, 1)
+  tabs.value.splice(toIdx, 0, moved)
+  onDragEnd()
+}
+
+/** D-16: 拖拽结束 — 清除状态 */
+function onDragEnd(): void {
+  draggedTabId.value = null
+  dragOverTabId.value = null
+}
+
 /** 检查是否有活跃 channel */
 function hasActiveChannels(): boolean {
   return channelToTab.size > 0
@@ -486,8 +541,19 @@ defineExpose({
             v-for="tab in tabs"
             :key="tab.id"
             class="tab-item"
-            :class="{ active: tab.id === activeTabId }"
+            :class="{
+              active: tab.id === activeTabId,
+              dragging: draggedTabId === tab.id,
+              'drag-over': dragOverTabId === tab.id
+            }"
+            draggable="true"
             @click="switchTab(tab.id)"
+            @dragstart="onDragStart($event, tab.id)"
+            @dragover.prevent="onDragOver($event)"
+            @dragenter.prevent="onDragEnter(tab.id)"
+            @dragleave="onDragLeave(tab.id)"
+            @drop="onDrop($event, tab.id)"
+            @dragend="onDragEnd"
           >
             <span class="tab-label">{{ tab.label }}</span>
             <span class="tab-close" @click.stop="closeTab(tab.id)">×</span>
@@ -705,6 +771,15 @@ defineExpose({
   background: #1e1e2e;
   color: #cdd6f4;
   border-bottom: 2px solid #89b4fa;
+}
+
+/* D-16: 拖拽排序样式 */
+.tab-item.dragging {
+  opacity: 0.5;
+}
+
+.tab-item.drag-over {
+  border-left: 2px solid var(--accent, #89b4fa);
 }
 
 .tab-label {
