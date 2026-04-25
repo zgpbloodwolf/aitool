@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue'
 import { useExtensionStore } from '../stores/extension'
+import ConfirmDialog from './ConfirmDialog.vue'
 import type { SessionInfo } from '../../../shared/types'
 
 interface SessionTab {
@@ -20,6 +21,47 @@ const iframeRefs = ref<Map<string, HTMLIFrameElement>>(new Map())
 const showSessionHistory = ref(false)
 const sessionList = ref<SessionInfo[]>([])
 const sessionLoading = ref(false)
+const sessionError = ref<string | null>(null)
+
+// 确认对话框状态
+const confirmVisible = ref(false)
+const confirmTitle = ref('')
+const confirmMessage = ref('')
+const confirmType = ref<'danger' | 'warning' | 'info'>('info')
+const pendingAction = ref<(() => void) | null>(null)
+
+/**
+ * 显示确认对话框
+ * @param title 对话框标题
+ * @param message 对话框消息
+ * @param type 对话框类型 (danger/warning/info)
+ * @param onConfirm 确认后的回调
+ */
+function showConfirm(
+  title: string,
+  message: string,
+  type: 'danger' | 'warning' | 'info',
+  onConfirm: () => void
+): void {
+  confirmTitle.value = title
+  confirmMessage.value = message
+  confirmType.value = type
+  pendingAction.value = onConfirm
+  confirmVisible.value = true
+}
+
+function handleConfirm(): void {
+  confirmVisible.value = false
+  if (pendingAction.value) {
+    pendingAction.value()
+    pendingAction.value = null
+  }
+}
+
+function handleCancel(): void {
+  confirmVisible.value = false
+  pendingAction.value = null
+}
 
 // Status messages from claude.exe
 const statusMessage = ref<string | null>(null)
@@ -44,13 +86,18 @@ function showStatus(msg: string, type: 'info' | 'warning' | 'error' = 'info', du
   statusType.value = type
   if (statusTimer) clearTimeout(statusTimer)
   if (duration > 0) {
-    statusTimer = setTimeout(() => { statusMessage.value = null }, duration)
+    statusTimer = setTimeout(() => {
+      statusMessage.value = null
+    }, duration)
   }
 }
 
 function clearStatus(): void {
   statusMessage.value = null
-  if (statusTimer) { clearTimeout(statusTimer); statusTimer = null }
+  if (statusTimer) {
+    clearTimeout(statusTimer)
+    statusTimer = null
+  }
 }
 
 function handleSystemMessage(msg: Record<string, unknown>, _channelId: string): void {
@@ -70,7 +117,10 @@ function handleSystemMessage(msg: Record<string, unknown>, _channelId: string): 
       const maxRetries = msg.max_retries as number
       const delay = Math.round((msg.retry_delay_ms as number) / 1000)
       const reason = msg.error as string
-      showStatus(`API ${reason === 'rate_limit' ? '速率限制' : reason}，正在重试 (${attempt}/${maxRetries})，${delay}秒后...`, 'warning')
+      showStatus(
+        `API ${reason === 'rate_limit' ? '速率限制' : reason}，正在重试 (${attempt}/${maxRetries})，${delay}秒后...`,
+        'warning'
+      )
       break
     }
     case 'result':
@@ -82,6 +132,13 @@ function handleSystemMessage(msg: Record<string, unknown>, _channelId: string): 
 }
 
 let webviewReady = false
+
+/** D-01: 重试 webview 初始化 */
+function resetAndRetry(): void {
+  webviewReady = false
+  error.value = null
+  initWebview()
+}
 
 async function initWebview() {
   if (!extStore.activeExtensionId || extStore.activeExtensionId !== 'anthropic.claude-code') {
@@ -137,10 +194,12 @@ async function toggleSessionHistory() {
 
   showSessionHistory.value = true
   sessionLoading.value = true
+  sessionError.value = null
   try {
     sessionList.value = await window.api.claudeListSessions()
   } catch (e) {
     console.error('[聊天面板] 列出会话失败:', e)
+    sessionError.value = '加载会话列表失败，请重试。'
     sessionList.value = []
   }
   sessionLoading.value = false
@@ -199,24 +258,50 @@ function closeSessionHistory(): void {
   showSessionHistory.value = false
 }
 
+/** D-02/D-06: 删除会话（带确认弹窗） */
 async function deleteSessionById(sessionId: string): Promise<void> {
-  try {
-    const ok = await window.api.claudeDeleteSession(sessionId)
-    if (ok) {
-      sessionList.value = sessionList.value.filter(s => s.id !== sessionId)
+  showConfirm('删除会话', '确定删除此会话？此操作不可撤销。', 'danger', async () => {
+    try {
+      const ok = await window.api.claudeDeleteSession(sessionId)
+      if (ok) {
+        sessionList.value = sessionList.value.filter((s) => s.id !== sessionId)
+      }
+    } catch {
+      /* ignore */
     }
-  } catch { /* ignore */ }
+  })
 }
 
 const sortedSessions = computed(() => {
   return [...sessionList.value].sort((a, b) => b.lastModified - a.lastModified)
 })
 
-function closeTab(id: string) {
-  const idx = tabs.value.findIndex(t => t.id === id)
+/** D-07: 关闭标签（活跃标签需确认） */
+function closeTab(id: string): void {
+  // 检查是否有活跃 channel
+  let hasActiveChannel = false
+  for (const [, tabId] of channelToTab) {
+    if (tabId === id) {
+      hasActiveChannel = true
+      break
+    }
+  }
+
+  if (hasActiveChannel) {
+    showConfirm('关闭对话', '此对话正在运行，关闭将终止进程。', 'warning', () => {
+      doCloseTab(id)
+    })
+  } else {
+    doCloseTab(id)
+  }
+}
+
+/** 实际执行关闭标签操作 */
+function doCloseTab(id: string): void {
+  const idx = tabs.value.findIndex((t) => t.id === id)
   if (idx === -1) return
 
-  // Find and close the channel associated with this tab
+  // 查找并关闭该 tab 关联的 channel
   for (const [channelId, tabId] of channelToTab) {
     if (tabId === id) {
       window.api.claudeWebviewFromWebview({ type: 'close_channel', channelId })
@@ -319,12 +404,48 @@ onBeforeUnmount(() => {
   }
 })
 
-watch(() => extStore.activeExtensionId, () => {
-  tabs.value = []
-  iframeRefs.value.clear()
-  channelToTab.clear()
-  webviewReady = false
-  initWebview()
+watch(
+  () => extStore.activeExtensionId,
+  () => {
+    tabs.value = []
+    iframeRefs.value.clear()
+    channelToTab.clear()
+    webviewReady = false
+    initWebview()
+  }
+)
+
+/** 切换到下一个标签（循环） */
+function switchToNextTab(): void {
+  if (tabs.value.length <= 1) return
+  const idx = tabs.value.findIndex((t) => t.id === activeTabId.value)
+  if (idx === -1) return
+  const nextIdx = (idx + 1) % tabs.value.length
+  activeTabId.value = tabs.value[nextIdx].id
+}
+
+/** 切换到上一个标签（循环） */
+function switchToPrevTab(): void {
+  if (tabs.value.length <= 1) return
+  const idx = tabs.value.findIndex((t) => t.id === activeTabId.value)
+  if (idx === -1) return
+  const prevIdx = (idx - 1 + tabs.value.length) % tabs.value.length
+  activeTabId.value = tabs.value[prevIdx].id
+}
+
+/** 检查是否有活跃 channel */
+function hasActiveChannels(): boolean {
+  return channelToTab.size > 0
+}
+
+/** 暴露方法给父组件（快捷键和标签操作需要） */
+defineExpose({
+  addNewTab,
+  closeTab,
+  switchTab,
+  switchToNextTab,
+  switchToPrevTab,
+  hasActiveChannels
 })
 </script>
 
@@ -346,6 +467,7 @@ watch(() => extStore.activeExtensionId, () => {
     <div v-else-if="error" class="chat-empty">
       <div class="empty-content">
         <p class="error">{{ error }}</p>
+        <button class="retry-btn" @click="resetAndRetry">重试</button>
       </div>
     </div>
     <div v-else-if="webviewUrl" class="chat-active">
@@ -363,7 +485,14 @@ watch(() => extStore.activeExtensionId, () => {
             <span class="tab-close" @click.stop="closeTab(tab.id)">×</span>
           </div>
         </div>
-        <button class="tab-history" @click="toggleSessionHistory" :class="{ active: showSessionHistory }" title="会话历史">&#x1F552;</button>
+        <button
+          class="tab-history"
+          @click="toggleSessionHistory"
+          :class="{ active: showSessionHistory }"
+          title="会话历史"
+        >
+          &#x1F552;
+        </button>
         <button class="tab-add" @click="addNewTab" title="新建对话">+</button>
       </div>
 
@@ -383,13 +512,21 @@ watch(() => extStore.activeExtensionId, () => {
 
       <!-- Session History Panel -->
       <Transition name="session-slide">
-        <div v-if="showSessionHistory" class="session-history-overlay" @click.self="closeSessionHistory">
+        <div
+          v-if="showSessionHistory"
+          class="session-history-overlay"
+          @click.self="closeSessionHistory"
+        >
           <div class="session-history-panel">
             <div class="session-header">
               <span class="session-title">会话历史</span>
               <button class="session-close" @click="closeSessionHistory">&times;</button>
             </div>
             <div v-if="sessionLoading" class="session-loading">加载中...</div>
+            <div v-else-if="sessionError" class="session-error">
+              <p>{{ sessionError }}</p>
+              <button class="retry-btn" @click="toggleSessionHistory">重试</button>
+            </div>
             <div v-else-if="sortedSessions.length === 0" class="session-empty">暂无会话记录</div>
             <div v-else class="session-list">
               <div
@@ -403,7 +540,13 @@ watch(() => extStore.activeExtensionId, () => {
                   <span class="session-time">{{ formatDate(s.lastModified) }}</span>
                   <span v-if="s.gitBranch" class="session-branch">{{ s.gitBranch }}</span>
                   <span class="session-size">{{ formatSize(s.fileSize) }}</span>
-                  <button class="session-delete" title="删除会话" @click.stop="deleteSessionById(s.id)">&#x1F5D1;</button>
+                  <button
+                    class="session-delete"
+                    title="删除会话"
+                    @click.stop="deleteSessionById(s.id)"
+                  >
+                    &#x1F5D1;
+                  </button>
                 </div>
               </div>
             </div>
@@ -418,6 +561,16 @@ watch(() => extStore.activeExtensionId, () => {
           <span class="status-text">{{ statusMessage }}</span>
         </div>
       </Transition>
+
+      <!-- 确认对话框 -->
+      <ConfirmDialog
+        :visible="confirmVisible"
+        :title="confirmTitle"
+        :message="confirmMessage"
+        :type="confirmType"
+        @confirm="handleConfirm"
+        @cancel="handleCancel"
+      />
     </div>
   </div>
 </template>
@@ -465,6 +618,30 @@ watch(() => extStore.activeExtensionId, () => {
 
 .error {
   color: var(--error);
+}
+
+/* D-01: 重试按钮 */
+.retry-btn {
+  margin-top: 12px;
+  background: var(--accent);
+  color: var(--bg-primary);
+  border: none;
+  padding: 6px 20px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.retry-btn:hover {
+  background: var(--accent-hover);
+}
+
+/* D-04: 会话列表错误提示 */
+.session-error {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--error);
+  font-size: 13px;
 }
 
 .chat-active {
@@ -647,13 +824,24 @@ watch(() => extStore.activeExtensionId, () => {
   animation: pulse 1.5s ease-in-out infinite;
 }
 
-.info .status-dot { background: #89b4fa; }
-.warning .status-dot { background: #f9e2af; }
-.error .status-dot { background: #f38ba8; }
+.info .status-dot {
+  background: #89b4fa;
+}
+.warning .status-dot {
+  background: #f9e2af;
+}
+.error .status-dot {
+  background: #f38ba8;
+}
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
 }
 
 .status-text {
@@ -805,7 +993,9 @@ watch(() => extStore.activeExtensionId, () => {
   padding: 2px 4px;
   border-radius: 3px;
   opacity: 0;
-  transition: opacity 0.15s, color 0.15s;
+  transition:
+    opacity 0.15s,
+    color 0.15s;
 }
 
 .session-item:hover .session-delete {

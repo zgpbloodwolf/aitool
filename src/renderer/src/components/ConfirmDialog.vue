@@ -6,7 +6,7 @@
   所有需要用户确认的操作（删除会话、关闭活跃标签、切换工作区）统一使用此组件。
 -->
 <script setup lang="ts">
-const props = defineProps<{
+defineProps<{
   visible: boolean
   title: string
   message: string
