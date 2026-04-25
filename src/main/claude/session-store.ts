@@ -15,7 +15,7 @@ export interface SessionInfo {
 }
 
 export function encodeProjectPath(cwd: string): string {
-  let encoded = cwd.replace(/[^a-zA-Z0-9]/g, '-')
+  const encoded = cwd.replace(/[^a-zA-Z0-9]/g, '-')
   if (encoded.length <= 200) return encoded
   const hash = Math.abs(
     Array.from(cwd).reduce((acc, ch) => ((acc << 5) - acc + ch.charCodeAt(0)) | 0, 0)
@@ -37,7 +37,9 @@ export function getProjectSessionDir(cwd: string): string | null {
   return null
 }
 
-async function readFileHeadAndTail(filePath: string): Promise<{ head: string; tail: string; mtime: number; size: number }> {
+async function readFileHeadAndTail(
+  filePath: string
+): Promise<{ head: string; tail: string; mtime: number; size: number }> {
   const s = await stat(filePath)
   const fd = await open(filePath, 'r')
   try {
@@ -70,7 +72,9 @@ function extractFirstUserPrompt(text: string): string | undefined {
           return block.text.length > 200 ? block.text.slice(0, 200) + '...' : block.text
         }
       }
-    } catch { /* skip malformed */ }
+    } catch {
+      /* skip malformed */
+    }
   }
   return undefined
 }
@@ -101,12 +105,19 @@ export async function listSessions(cwd: string): Promise<SessionInfo[]> {
       try {
         const { head, tail, mtime, size } = await readFileHeadAndTail(filePath)
         const fullText = head + '\n' + tail
-        const summary = extractFirstUserPrompt(head) || extractStringValue(tail, 'customTitle') || extractStringValue(fullText, 'aiTitle')
+        const summary =
+          extractFirstUserPrompt(head) ||
+          extractStringValue(tail, 'customTitle') ||
+          extractStringValue(fullText, 'aiTitle')
         const gitBranch = extractStringValue(fullText, 'gitBranch')
         sessions.push({ id: sessionId, lastModified: mtime, fileSize: size, summary, gitBranch })
-      } catch { /* skip */ }
+      } catch {
+        /* skip */
+      }
     }
-  } catch { /* skip */ }
+  } catch {
+    /* skip */
+  }
 
   sessions.sort((a, b) => b.lastModified - a.lastModified)
   safeLog('[SessionStore] 已列出会话:', sessions.length)
@@ -131,7 +142,9 @@ export async function getSessionMessages(sessionId: string, cwd: string): Promis
         if (obj.type === 'user' || obj.type === 'assistant' || obj.type === 'system') {
           messages.push(obj)
         }
-      } catch { /* skip malformed */ }
+      } catch {
+        /* skip malformed */
+      }
     }
   } catch {
     safeError('[SessionStore] 读取会话文件失败:', filePath)
@@ -142,6 +155,12 @@ export async function getSessionMessages(sessionId: string, cwd: string): Promis
 }
 
 export async function deleteSession(sessionId: string, cwd: string): Promise<boolean> {
+  // 验证 sessionId 为 UUID 格式，防止路径遍历攻击 (per D-21)
+  if (!UUID_RE.test(sessionId)) {
+    safeError('[SessionStore] 无效的 sessionId 格式:', sessionId)
+    return false
+  }
+
   const sessionDir = getProjectSessionDir(cwd)
   if (!sessionDir) return false
 

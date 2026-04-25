@@ -11,6 +11,8 @@ interface SessionTab {
 
 const extStore = useExtensionStore()
 const webviewUrl = ref<string | null>(null)
+// D-23: 存储 webview 端口，用于 postMessage 精确 origin
+const webviewPort = ref<number>(0)
 const loading = ref(false)
 const error = ref<string | null>(null)
 const tabs = ref<SessionTab[]>([])
@@ -163,6 +165,7 @@ async function initWebview() {
     }
 
     const port = await window.api.claudeStartWebviewServer(extPath)
+    webviewPort.value = port // D-23: 保存端口用于 postMessage 精确 origin
     webviewUrl.value = `http://127.0.0.1:${port}/`
     loading.value = false
 
@@ -344,14 +347,18 @@ function forwardToWebview(msg: unknown) {
     if (tabId) {
       const iframe = iframeRefs.value.get(tabId)
       if (iframe?.contentWindow) {
-        iframe.contentWindow.postMessage({ type: 'from-extension', message: msg }, '*')
+        // D-23: 使用精确 origin 替代通配符 '*'，限制消息接收方
+        const origin = `http://127.0.0.1:${webviewPort.value}`
+        iframe.contentWindow.postMessage({ type: 'from-extension', message: msg }, origin)
       }
     }
   } else {
     // No channelId (e.g. init response) — broadcast to all iframes
+    // D-23: 使用精确 origin 替代通配符 '*'
+    const origin = `http://127.0.0.1:${webviewPort.value}`
     for (const iframe of iframeRefs.value.values()) {
       if (iframe?.contentWindow) {
-        iframe.contentWindow.postMessage({ type: 'from-extension', message: msg }, '*')
+        iframe.contentWindow.postMessage({ type: 'from-extension', message: msg }, origin)
       }
     }
   }
