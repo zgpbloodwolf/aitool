@@ -12,6 +12,17 @@ const api = {
   stat: (filePath: string): Promise<{ isFile: boolean; isDirectory: boolean; size: number }> =>
     ipcRenderer.invoke('fs:stat', filePath),
 
+  // 文件监听
+  startFileWatch: (dirPath: string): Promise<boolean> =>
+    ipcRenderer.invoke('fs:startWatch', dirPath),
+  stopFileWatch: (): Promise<boolean> =>
+    ipcRenderer.invoke('fs:stopWatch'),
+  onFileChanged: (callback: () => void): (() => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on('fs:changed', handler)
+    return () => ipcRenderer.removeListener('fs:changed', handler)
+  },
+
   // Extension Host
   getInstalledExtensions: (): Promise<ExtensionInfo[]> => ipcRenderer.invoke('ext:getInstalled'),
   activateExtension: (extensionId: string): Promise<void> =>

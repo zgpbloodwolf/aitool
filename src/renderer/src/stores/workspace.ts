@@ -22,6 +22,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       await window.api.claudeSetCwd(path)
       expandedDirs.value.clear()
       files.value = await loadDirectory(path)
+      await startWatch()
     }
   }
 
@@ -76,5 +77,44 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     selectedFile.value = path
   }
 
-  return { rootPath, files, expandedDirs, selectedFile, openFolder, toggleDir, selectFile }
+  // 文件监听：chokidar 主进程监听文件变更，通过 IPC 通知渲染进程
+  let offFileChanged: (() => void) | null = null
+
+  async function startWatch(): Promise<void> {
+    if (!rootPath.value) return
+    stopWatch()
+    await window.api.startFileWatch(rootPath.value)
+    offFileChanged = window.api.onFileChanged(async () => {
+      // 文件变更时刷新文件树
+      if (rootPath.value) {
+        files.value = await loadDirectory(rootPath.value)
+      }
+    })
+  }
+
+  function stopWatch(): void {
+    if (offFileChanged) {
+      offFileChanged()
+      offFileChanged = null
+    }
+    window.api.stopFileWatch()
+  }
+
+  // 搜索过滤和收藏目录所需的基础 ref（Task 2 使用）
+  const filterText = ref('')
+  const favorites = ref<string[]>(JSON.parse(localStorage.getItem('aitools-favorites') || '[]'))
+
+  return {
+    rootPath,
+    files,
+    expandedDirs,
+    selectedFile,
+    filterText,
+    favorites,
+    openFolder,
+    toggleDir,
+    selectFile,
+    startWatch,
+    stopWatch
+  }
 })
