@@ -95,6 +95,19 @@ const api = {
       callback(data)
     ipcRenderer.on('claude:process-unresponsive', handler)
     return () => ipcRenderer.removeListener('claude:process-unresponsive', handler)
+  },
+  // D-05: 快捷键 IPC — 主进程拦截后转发到渲染进程
+  onShortcut: (callback: (action: string) => void): (() => void) => {
+    const channels = [
+      'shortcut:new-tab', 'shortcut:close-tab', 'shortcut:toggle-sidebar',
+      'shortcut:next-tab', 'shortcut:prev-tab'
+    ]
+    const unsubscribers = channels.map((ch) => {
+      const fn = (): void => callback(ch.replace('shortcut:', ''))
+      ipcRenderer.on(ch, fn)
+      return () => ipcRenderer.removeListener(ch, fn)
+    })
+    return () => unsubscribers.forEach((u) => u())
   }
 }
 

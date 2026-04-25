@@ -145,15 +145,43 @@ function handleGlobalKeydown(e: KeyboardEvent): void {
   }
 }
 
+/** D-05: 主进程 IPC 快捷键回调 — iframe 焦点时渲染进程 keydown 不触发，由主进程 before-input-event 拦截 */
+function handleShortcut(action: string): void {
+  switch (action) {
+    case 'new-tab':
+      chatPanelRef.value?.addNewTab()
+      break
+    case 'close-tab': {
+      const activeId = chatPanelRef.value?.activeTabId
+      if (activeId) chatPanelRef.value?.closeTab(activeId)
+      break
+    }
+    case 'toggle-sidebar':
+      sidebarVisible.value = !sidebarVisible.value
+      break
+    case 'next-tab':
+      chatPanelRef.value?.switchToNextTab()
+      break
+    case 'prev-tab':
+      chatPanelRef.value?.switchToPrevTab()
+      break
+  }
+}
+
+let offShortcut: (() => void) | null = null
+
 onMounted(() => {
   extStore.loadExtensions()
-  // D-05: 注册全局键盘快捷键
+  // D-05: 注册全局键盘快捷键（文档级，iframe 焦点时无效）
   document.addEventListener('keydown', handleGlobalKeydown)
+  // D-05: 注册 IPC 快捷键（主进程拦截，iframe 焦点时也生效）
+  offShortcut = window.api.onShortcut(handleShortcut)
 })
 
 onBeforeUnmount(() => {
   // D-05: 清理全局键盘快捷键
   document.removeEventListener('keydown', handleGlobalKeydown)
+  offShortcut?.()
 })
 </script>
 

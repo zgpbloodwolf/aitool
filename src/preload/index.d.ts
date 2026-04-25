@@ -43,6 +43,7 @@ declare global {
         callback: (data: { channelId: string; canRecover: boolean }) => void
       ) => () => void
       onProcessUnresponsive: (callback: (data: { channelId: string }) => void) => () => void
+      onShortcut: (callback: (action: string) => void) => () => void
     }
   }
 }

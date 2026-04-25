@@ -76,6 +76,26 @@ function createWindow(): BrowserWindow {
     return { action: 'deny' }
   })
 
+  // D-05: 在主进程拦截快捷键，解决 iframe 获取焦点后渲染进程收不到键盘事件的问题
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (!input.control && !input.meta) return
+    const shortcuts: Record<string, string> = {
+      'n': 'shortcut:new-tab',
+      'w': 'shortcut:close-tab',
+      'b': 'shortcut:toggle-sidebar'
+    }
+    if (input.key === 'Tab') {
+      event.preventDefault()
+      mainWindow.webContents.send(input.shift ? 'shortcut:prev-tab' : 'shortcut:next-tab')
+      return
+    }
+    const channel = shortcuts[input.key.toLowerCase()]
+    if (channel) {
+      event.preventDefault()
+      mainWindow.webContents.send(channel)
+    }
+  })
+
   if (!app.isPackaged && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
