@@ -12,13 +12,15 @@ const api = {
   stat: (filePath: string): Promise<{ isFile: boolean; isDirectory: boolean; size: number }> =>
     ipcRenderer.invoke('fs:stat', filePath),
 
-  // 文件监听
-  startFileWatch: (dirPath: string): Promise<boolean> =>
-    ipcRenderer.invoke('fs:startWatch', dirPath),
-  stopFileWatch: (): Promise<boolean> =>
-    ipcRenderer.invoke('fs:stopWatch'),
-  onFileChanged: (callback: () => void): (() => void) => {
-    const handler = (): void => callback()
+  // 文件监听（多项目支持）
+  startFileWatch: (projectId: string, dirPath: string): Promise<boolean> =>
+    ipcRenderer.invoke('fs:startWatch', projectId, dirPath),
+  stopFileWatch: (projectId: string): Promise<boolean> =>
+    ipcRenderer.invoke('fs:stopWatch', projectId),
+  onFileChanged: (projectId: string, callback: () => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, changedProjectId: string): void => {
+      if (changedProjectId === projectId) callback()
+    }
     ipcRenderer.on('fs:changed', handler)
     return () => ipcRenderer.removeListener('fs:changed', handler)
   },

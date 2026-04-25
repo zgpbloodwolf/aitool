@@ -1,4 +1,4 @@
-// workspace store 的 filterFiles 递归过滤和收藏列表 CRUD 单元测试
+// workspace store 的 filterFiles 递归过滤和多项目管理单元测试
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // mock localStorage
@@ -30,13 +30,11 @@ Object.defineProperty(globalThis, 'window', {
   writable: true
 })
 
-// 导入 store 和类型 — 在 mock 之后
 import { useWorkspaceStore, type FileEntry } from '../workspace'
 import { createPinia, setActivePinia } from 'pinia'
 
 /**
- * 模拟 filterFiles 的纯函数逻辑（从 store 提取为可测试函数）
- * 因为 store 的 filteredFiles 依赖响应式，这里直接测试过滤逻辑
+ * 直接测试 store 导出的 filterFiles 纯函数
  */
 function filterFiles(entries: FileEntry[], query: string): FileEntry[] {
   const result: FileEntry[] = []
@@ -106,7 +104,6 @@ describe('filterFiles 过滤逻辑', () => {
       }
     ]
     const result = filterFiles(entries, 'main')
-    // src 目录应保留，因为子文件 main.ts 匹配
     expect(result).toHaveLength(1)
     expect(result[0].name).toBe('src')
     expect(result[0].children).toBeDefined()
@@ -114,45 +111,68 @@ describe('filterFiles 过滤逻辑', () => {
   })
 })
 
-describe('收藏列表 CRUD', () => {
+describe('多项目管理', () => {
   beforeEach(() => {
     localStorageMock.clear()
     vi.clearAllMocks()
     setActivePinia(createPinia())
   })
 
-  it('addFavorite 添加路径到 favorites 并持久化到 localStorage', () => {
+  it('addProject 创建项目并设为 active', async () => {
+    apiMock.selectFolder.mockResolvedValueOnce('/project/a')
+    apiMock.readDir.mockResolvedValueOnce([])
     const store = useWorkspaceStore()
-    store.addFavorite('/project/a')
-    expect(store.favorites).toContain('/project/a')
+    await store.addProject()
+    expect(store.projects).toHaveLength(1)
+    expect(store.projects[0].path).toBe('/project/a')
+    expect(store.projects[0].isActive).toBe(true)
+    expect(store.activeProjectId).toBe(store.projects[0].id)
+  })
+
+  it('addProject 重复路径激活已有项目', async () => {
+    apiMock.selectFolder.mockResolvedValueOnce('/project/a')
+    apiMock.readDir.mockResolvedValueOnce([])
+    const store = useWorkspaceStore()
+    const first = await store.addProject()
+    // 添加第二个项目
+    apiMock.selectFolder.mockResolvedValueOnce('/project/b')
+    await store.addProject()
+    // 再次添加 /project/a
+    apiMock.selectFolder.mockResolvedValueOnce('/project/a')
+    const result = await store.addProject()
+    expect(result!.id).toBe(first!.id)
+    expect(store.projects).toHaveLength(2)
+  })
+
+  it('toggleFavorite 切换收藏状态并持久化', async () => {
+    apiMock.selectFolder.mockResolvedValueOnce('/project/a')
+    apiMock.readDir.mockResolvedValueOnce([])
+    const store = useWorkspaceStore()
+    const project = await store.addProject()
+    store.toggleFavorite(project!.id)
+    expect(store.projects[0].isFavorite).toBe(true)
     expect(localStorageMock.setItem).toHaveBeenCalledWith(
-      'aitools-favorites',
-      JSON.stringify(['/project/a'])
+      'aitools-projects',
+      expect.any(String)
     )
+    // 取消收藏
+    store.toggleFavorite(project!.id)
+    expect(store.projects[0].isFavorite).toBe(false)
   })
 
-  it('addFavorite 不重复添加已存在的路径', () => {
+  it('addTag/removeTag 管理标签', async () => {
+    apiMock.selectFolder.mockResolvedValueOnce('/project/a')
+    apiMock.readDir.mockResolvedValueOnce([])
     const store = useWorkspaceStore()
-    store.addFavorite('/project/a')
-    store.addFavorite('/project/a')
-    expect(store.favorites.filter((p) => p === '/project/a')).toHaveLength(1)
-  })
-
-  it('removeFavorite 从 favorites 中移除指定路径', () => {
-    const store = useWorkspaceStore()
-    store.addFavorite('/project/a')
-    store.addFavorite('/project/b')
-    store.removeFavorite('/project/a')
-    expect(store.favorites).not.toContain('/project/a')
-    expect(store.favorites).toContain('/project/b')
-  })
-
-  it('removeFavorite 不影响其他收藏路径', () => {
-    const store = useWorkspaceStore()
-    store.addFavorite('/project/a')
-    store.addFavorite('/project/b')
-    store.addFavorite('/project/c')
-    store.removeFavorite('/project/b')
-    expect(store.favorites).toEqual(['/project/a', '/project/c'])
+    const project = await store.addProject()
+    store.addTag(project!.id, 'OCR')
+    store.addTag(project!.id, 'AI')
+    expect(store.projects[0].tags).toEqual(['OCR', 'AI'])
+    // 不重复添加
+    store.addTag(project!.id, 'OCR')
+    expect(store.projects[0].tags).toEqual(['OCR', 'AI'])
+    // 移除
+    store.removeTag(project!.id, 'OCR')
+    expect(store.projects[0].tags).toEqual(['AI'])
   })
 })

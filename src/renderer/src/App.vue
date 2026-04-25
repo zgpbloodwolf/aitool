@@ -59,22 +59,10 @@ const confirmType = ref<'danger' | 'warning' | 'info'>('info')
 const pendingAction = ref<(() => void) | null>(null)
 
 /**
- * D-08: 切换工作区确认
- * 检查是否有活跃 Claude 进程，若有则弹出确认对话框
+ * 添加项目目录 — 不影响已有 Claude 进程
  */
 function handleOpenFolder(): void {
-  if (chatPanelRef.value?.hasActiveChannels()) {
-    showConfirm(
-      '切换工作区',
-      '当前有活跃的 Claude 对话，切换工作区将终止所有进程。',
-      'warning',
-      () => {
-        workspaceStore.openFolder()
-      }
-    )
-  } else {
-    workspaceStore.openFolder()
-  }
+  workspaceStore.addProject()
 }
 
 function showConfirm(
@@ -172,6 +160,8 @@ let offShortcut: (() => void) | null = null
 
 onMounted(() => {
   extStore.loadExtensions()
+  // 恢复持久化的收藏项目
+  workspaceStore.loadPersistedProjects()
   // D-05: 注册全局键盘快捷键（文档级，iframe 焦点时无效）
   document.addEventListener('keydown', handleGlobalKeydown)
   // D-05: 注册 IPC 快捷键（主进程拦截，iframe 焦点时也生效）

@@ -5,7 +5,7 @@ import { registerDialogHandlers } from './ipc/dialog'
 import { registerFilesystemHandlers } from './ipc/filesystem'
 import { registerExtensionHandlers } from './ipc/extensions'
 import { registerClaudeWebviewHandlers, shutdownClaude } from './ipc/claude-webview'
-import { registerFileWatcherHandlers } from './ipc/file-watcher'
+import { registerFileWatcherHandlers, stopAllWatchers } from './ipc/file-watcher'
 import { stopWebviewServer } from './claude/webview-server'
 
 // 设置 Windows 控制台代码页为 UTF-8，防止中文日志乱码
@@ -130,6 +130,7 @@ app.whenReady().then(() => {
 })
 
 app.on('before-quit', async () => {
+  stopAllWatchers()
   await shutdownClaude()
   stopWebviewServer()
 })

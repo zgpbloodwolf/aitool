@@ -1,37 +1,46 @@
-// 文件系统监听 IPC handler — 使用 chokidar 监听工作区变更，通知渲染进程刷新文件树
+// 文件系统监听 IPC handler — 多项目支持，按 projectId 管理多个 chokidar watcher
 import chokidar from 'chokidar'
 import { ipcMain, BrowserWindow } from 'electron'
 
-let watcher: chokidar.FSWatcher | null = null
+const watchers = new Map<string, chokidar.FSWatcher>()
 
 export function registerFileWatcherHandlers(): void {
-  ipcMain.handle('fs:startWatch', (_event, dirPath: string) => {
-    stopWatcher()
-    watcher = chokidar.watch(dirPath, {
+  ipcMain.handle('fs:startWatch', (_event, projectId: string, dirPath: string) => {
+    stopWatcher(projectId)
+    const watcher = chokidar.watch(dirPath, {
       ignored: /node_modules|\.git/,
       persistent: true,
       ignoreInitial: true,
       depth: 10
     })
     watcher.on('all', () => {
-      // 任何文件变更都通知渲染进程刷新文件树
       const win = BrowserWindow.getAllWindows()[0]
       if (win) {
-        win.webContents.send('fs:changed')
+        win.webContents.send('fs:changed', projectId)
       }
     })
+    watchers.set(projectId, watcher)
     return true
   })
 
-  ipcMain.handle('fs:stopWatch', () => {
-    stopWatcher()
+  ipcMain.handle('fs:stopWatch', (_event, projectId: string) => {
+    stopWatcher(projectId)
     return true
   })
 }
 
-function stopWatcher(): void {
+function stopWatcher(projectId: string): void {
+  const watcher = watchers.get(projectId)
   if (watcher) {
     watcher.close()
-    watcher = null
+    watchers.delete(projectId)
+  }
+}
+
+// 应用退出时关闭所有 watcher
+export function stopAllWatchers(): void {
+  for (const [id, watcher] of watchers) {
+    watcher.close()
+    watchers.delete(id)
   }
 }

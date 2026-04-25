@@ -10,9 +10,9 @@ declare global {
       readDir: (dirPath: string) => Promise<string[]>
       readFile: (filePath: string) => Promise<string>
       stat: (filePath: string) => Promise<{ isFile: boolean; isDirectory: boolean; size: number }>
-      startFileWatch: (dirPath: string) => Promise<boolean>
-      stopFileWatch: () => Promise<boolean>
-      onFileChanged: (callback: () => void) => () => void
+      startFileWatch: (projectId: string, dirPath: string) => Promise<boolean>
+      stopFileWatch: (projectId: string) => Promise<boolean>
+      onFileChanged: (projectId: string, callback: () => void) => () => void
       getInstalledExtensions: () => Promise<ExtensionInfo[]>
       activateExtension: (extensionId: string) => Promise<void>
       claudeStart: () => Promise<{ success: boolean; error?: string }>
