@@ -3,13 +3,22 @@ import { useWorkspaceStore } from '../stores/workspace'
 import FileTree from './FileTree.vue'
 
 const workspace = useWorkspaceStore()
+
+// D-08: 通过 emit 触发 App.vue 的工作区切换确认流程
+const emit = defineEmits<{
+  (e: 'open-folder'): void
+}>()
+
+function handleOpenFolder(): void {
+  emit('open-folder')
+}
 </script>
 
 <template>
   <div class="sidebar">
     <div class="sidebar-header">
       <span class="sidebar-title">资源管理器</span>
-      <button v-if="!workspace.rootPath" class="open-btn" @click="workspace.openFolder()">
+      <button v-if="!workspace.rootPath" class="open-btn" @click="handleOpenFolder()">
         打开文件夹
       </button>
     </div>
