@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { useWorkspaceStore, type Project } from '../stores/workspace'
 import FileTree from './FileTree.vue'
 
@@ -74,10 +74,7 @@ function cancelAddTag(): void {
   newTagInput.value = ''
 }
 
-// 未分组和未收藏项目
-const untaggedFavorites = computed(() =>
-  workspace.favoriteProjects.filter(p => p.tags.length === 0)
-)
+// 未分组和未收藏项目（favoritesByTag 已包含"未分组"）
 </script>
 
 <template>

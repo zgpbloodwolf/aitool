@@ -1,13 +1,14 @@
 // 文件系统监听 IPC handler — 多项目支持，按 projectId 管理多个 chokidar watcher
-import chokidar from 'chokidar'
+import { watch } from 'chokidar'
+import type { FSWatcher } from 'chokidar'
 import { ipcMain, BrowserWindow } from 'electron'
 
-const watchers = new Map<string, chokidar.FSWatcher>()
+const watchers = new Map<string, FSWatcher>()
 
 export function registerFileWatcherHandlers(): void {
   ipcMain.handle('fs:startWatch', (_event, projectId: string, dirPath: string) => {
     stopWatcher(projectId)
-    const watcher = chokidar.watch(dirPath, {
+    const watcher = watch(dirPath, {
       ignored: /node_modules|\.git/,
       persistent: true,
       ignoreInitial: true,

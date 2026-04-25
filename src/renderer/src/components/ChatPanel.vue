@@ -67,7 +67,7 @@ function handleCancel(): void {
 
 // Status messages from claude.exe
 const statusMessage = ref<string | null>(null)
-const statusType = ref<'info' | 'warning' | 'error'>('info')
+const statusType = ref<'info' | 'warning' | 'error' | 'success'>('info')
 let statusTimer: ReturnType<typeof setTimeout> | null = null
 
 // Map channelId (from webview launch_claude) → tabId (for routing responses)
@@ -91,7 +91,7 @@ function generateTabId(): string {
   return `session-${Date.now()}-${++tabCounter}`
 }
 
-function showStatus(msg: string, type: 'info' | 'warning' | 'error' = 'info', duration = 0): void {
+function showStatus(msg: string, type: 'info' | 'warning' | 'error' | 'success' = 'info', duration = 0): void {
   statusMessage.value = msg
   statusType.value = type
   if (statusTimer) clearTimeout(statusTimer)

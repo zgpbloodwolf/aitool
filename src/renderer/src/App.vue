@@ -6,7 +6,6 @@ import TitleBar from './components/TitleBar.vue'
 import Sidebar from './components/Sidebar.vue'
 import ChatPanel from './components/ChatPanel.vue'
 import StatusBar from './components/StatusBar.vue'
-import ConfirmDialog from './components/ConfirmDialog.vue'
 
 const extStore = useExtensionStore()
 const workspaceStore = useWorkspaceStore()
@@ -51,44 +50,11 @@ function startResize(e: MouseEvent): void {
 // D-05: ChatPanel ref 供快捷键调用
 const chatPanelRef = ref<InstanceType<typeof ChatPanel> | null>(null)
 
-// 确认对话框状态（D-08: 工作区切换确认）
-const confirmVisible = ref(false)
-const confirmTitle = ref('')
-const confirmMessage = ref('')
-const confirmType = ref<'danger' | 'warning' | 'info'>('info')
-const pendingAction = ref<(() => void) | null>(null)
-
 /**
  * 添加项目目录 — 不影响已有 Claude 进程
  */
 function handleOpenFolder(): void {
   workspaceStore.addProject()
-}
-
-function showConfirm(
-  title: string,
-  message: string,
-  type: 'danger' | 'warning' | 'info',
-  onConfirm: () => void
-): void {
-  confirmTitle.value = title
-  confirmMessage.value = message
-  confirmType.value = type
-  pendingAction.value = onConfirm
-  confirmVisible.value = true
-}
-
-function handleConfirm(): void {
-  confirmVisible.value = false
-  if (pendingAction.value) {
-    pendingAction.value()
-    pendingAction.value = null
-  }
-}
-
-function handleCancel(): void {
-  confirmVisible.value = false
-  pendingAction.value = null
 }
 
 /**
@@ -200,15 +166,6 @@ onBeforeUnmount(() => {
       </div>
     </div>
     <StatusBar />
-    <!-- D-08: 工作区切换确认对话框 -->
-    <ConfirmDialog
-      :visible="confirmVisible"
-      :title="confirmTitle"
-      :message="confirmMessage"
-      :type="confirmType"
-      @confirm="handleConfirm"
-      @cancel="handleCancel"
-    />
   </div>
 </template>
 

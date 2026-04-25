@@ -26,8 +26,8 @@ onMounted(async () => {
     </div>
     <div class="statusbar-right">
       <span v-if="modelName" class="status-item model-badge">{{ modelName }}</span>
-      <span v-if="workspace.rootPath" class="status-item clickable" @click="workspace.openFolder()">
-        &#x1F4C1; {{ workspace.rootPath.split(/[\\/]/).pop() }}
+      <span v-if="workspace.activePath" class="status-item">
+        &#x1F4C1; {{ workspace.activePath.split(/[\\/]/).pop() }}
       </span>
       <span class="status-item">v{{ version }}</span>
     </div>
