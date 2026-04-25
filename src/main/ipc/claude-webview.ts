@@ -245,6 +245,12 @@ async function handleLaunchClaude(
       }
     }
 
+    // D-10: 从 system init 消息中提取 session_id 用于崩溃恢复
+    if (msg.type === 'system' && msg.subtype === 'init' && typeof msg.session_id === 'string') {
+      const ch = channels.get(channelId)
+      if (ch) ch.lastSessionId = msg.session_id as string
+    }
+
     let messageCopy: typeof msg
     try {
       messageCopy = structuredClone(msg)
