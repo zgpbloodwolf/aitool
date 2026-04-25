@@ -13,5 +13,7 @@ export default defineConfig({
     environment: 'happy-dom',
     include: ['src/renderer/src/**/*.test.ts'],
     globals: true
-  }
+  },
+  // 主进程测试使用独立配置，通过 vitest --config 运行
+  // 见 vitest.main.config.ts
 })
