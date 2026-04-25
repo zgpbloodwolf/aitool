@@ -117,8 +117,8 @@ async function handleSystemMessage(msg: Record<string, unknown>, _channelId: str
   switch (subtype) {
     case 'init': {
       showStatus('Claude 会话已就绪', 'info', 2000)
-      // D-14: init 事件表示 Claude 开始运行
-      if (tabId) tabStatuses.value.set(tabId, 'running')
+      // D-14: init 表示进程已就绪等待输入，设为 idle
+      if (tabId) tabStatuses.value.set(tabId, 'idle')
 
       // D-13: 提取智能标签名
       let newLabel: string | null = null
@@ -141,8 +141,6 @@ async function handleSystemMessage(msg: Record<string, unknown>, _channelId: str
     }
     case 'hook_started':
       showStatus('正在运行启动钩子...', 'info')
-      // D-14: hook 启动表示 Claude 正在运行
-      if (tabId) tabStatuses.value.set(tabId, 'running')
       break
     case 'hook_response':
       clearStatus()
@@ -163,8 +161,7 @@ async function handleSystemMessage(msg: Record<string, unknown>, _channelId: str
       if (tabId) tabStatuses.value.set(tabId, 'idle')
       break
     default:
-      // D-14: 其他 system 消息表示正在处理中
-      if (tabId) tabStatuses.value.set(tabId, 'running')
+      break
       break
   }
 }
@@ -433,28 +430,28 @@ function handleIframeMessage(event: MessageEvent) {
     const message = event.data.message as Record<string, unknown>
 
     // D-13: 从用户发送的消息中提取标签名
-    if (sourceTabId) {
-      const tab = tabs.value.find(t => t.id === sourceTabId)
-      if (tab && tab.label.startsWith('对话')) {
-        let userText = ''
-        if (message?.type === 'io_message') {
-          const inner = message.message as Record<string, unknown> | undefined
-          if (inner?.type === 'user') {
-            const msgContent = inner.message
-            if (typeof msgContent === 'string') {
-              userText = msgContent
-            } else if (typeof msgContent === 'object' && msgContent !== null) {
-              const content = (msgContent as Record<string, unknown>).content
-              if (Array.isArray(content)) {
-                const textBlock = content.find((b: Record<string, unknown>) =>
-                  b.type === 'text' && typeof b.text === 'string')
-                if (textBlock) userText = (textBlock as { text: string }).text
-              }
+    if (sourceTabId && message?.type === 'io_message') {
+      const inner = message.message as Record<string, unknown> | undefined
+      if (inner?.type === 'user') {
+        // D-14: 用户发送消息时设为 running
+        tabStatuses.value.set(sourceTabId, 'running')
+        const tab = tabs.value.find(t => t.id === sourceTabId)
+        if (tab && tab.label.startsWith('对话')) {
+          let userText = ''
+          const msgContent = inner.message
+          if (typeof msgContent === 'string') {
+            userText = msgContent
+          } else if (typeof msgContent === 'object' && msgContent !== null) {
+            const content = (msgContent as Record<string, unknown>).content
+            if (Array.isArray(content)) {
+              const textBlock = content.find((b: Record<string, unknown>) =>
+                b.type === 'text' && typeof b.text === 'string')
+              if (textBlock) userText = (textBlock as { text: string }).text
             }
           }
-        }
-        if (userText.trim()) {
-          tab.label = userText.trim().replace(/\n/g, ' ').slice(0, 20)
+          if (userText.trim()) {
+            tab.label = userText.trim().replace(/\n/g, ' ').slice(0, 20)
+          }
         }
       }
     }
