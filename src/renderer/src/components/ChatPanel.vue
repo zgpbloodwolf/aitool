@@ -160,7 +160,6 @@ async function handleSystemMessage(msg: Record<string, unknown>, _channelId: str
     }
     case 'result':
       clearStatus()
-      // D-14: result 事件表示 Claude 完成任务，回到空闲
       if (tabId) tabStatuses.value.set(tabId, 'idle')
       break
     default:
@@ -384,6 +383,12 @@ function forwardToWebview(msg: unknown) {
     if (reqTabId) tabStatuses.value.set(reqTabId, 'waiting')
   }
 
+  // D-14: result → idle
+  if (m?.message?.type === 'result' && m.channelId) {
+    const resultTabId = channelToTab.get(m.channelId)
+    if (resultTabId) tabStatuses.value.set(resultTabId, 'idle')
+  }
+
   if (m?.channelId) {
     // Route to the iframe that owns this channelId
     const tabId = channelToTab.get(m.channelId)
@@ -421,6 +426,48 @@ function handleIframeMessage(event: MessageEvent) {
     }
 
     const message = event.data.message as Record<string, unknown>
+
+    // D-13: 从用户发送的消息中提取标签名
+    if (sourceTabId) {
+      const tab = tabs.value.find(t => t.id === sourceTabId)
+      if (tab && tab.label.startsWith('对话')) {
+        let userText = ''
+        if (message?.type === 'io_message') {
+          const inner = message.message as Record<string, unknown> | undefined
+          if (inner?.type === 'user') {
+            const msgContent = inner.message
+            if (typeof msgContent === 'string') {
+              userText = msgContent
+            } else if (typeof msgContent === 'object' && msgContent !== null) {
+              const content = (msgContent as Record<string, unknown>).content
+              if (Array.isArray(content)) {
+                const textBlock = content.find((b: Record<string, unknown>) =>
+                  b.type === 'text' && typeof b.text === 'string')
+                if (textBlock) userText = (textBlock as { text: string }).text
+              }
+            }
+          }
+        }
+        if (userText.trim()) {
+          tab.label = userText.trim().replace(/\n/g, ' ').slice(0, 20)
+        }
+      }
+    }
+
+    // D-13: 从 webview 的 update_session_state 提取标题（更可靠）
+    if (message?.type === 'request') {
+      const req = message.request as Record<string, unknown> | undefined
+      if (req?.type === 'update_session_state' && typeof req.title === 'string') {
+        const cid = req.channelId as string | undefined
+        const tabId = cid ? channelToTab.get(cid) : null
+        if (tabId) {
+          const tab = tabs.value.find(t => t.id === tabId)
+          if (tab && req.title.trim()) {
+            tab.label = String(req.title).trim().slice(0, 20)
+          }
+        }
+      }
+    }
 
     // Track channelId → tabId mapping from launch_claude
     if (message?.type === 'launch_claude' && message.channelId && sourceTabId) {
