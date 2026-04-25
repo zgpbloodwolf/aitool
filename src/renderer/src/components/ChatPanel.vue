@@ -82,10 +82,15 @@ const pendingResume = new Map<string, string>()
 let offWebviewMessage: (() => void) | null = null
 let offProcessCrashed: (() => void) | null = null
 let offProcessUnresponsive: (() => void) | null = null
+let offDownloadProgress: (() => void) | null = null
 let tabCounter = 0
 
 // D-11: 无响应的 channel 集合，用于显示重启按钮
 const unresponsiveChannels = ref<Set<string>>(new Set())
+
+// 扩展下载状态
+const downloading = ref(false)
+const downloadProgress = ref<string | null>(null)
 
 function generateTabId(): string {
   return `session-${Date.now()}-${++tabCounter}`
@@ -174,6 +179,43 @@ function resetAndRetry(): void {
   initWebview()
 }
 
+/** 自动下载 Claude Code 扩展 */
+async function handleDownloadExtension(): Promise<void> {
+  if (downloading.value) return
+  downloading.value = true
+  downloadProgress.value = '正在准备下载...'
+
+  offDownloadProgress = window.api.onDownloadProgress((msg) => {
+    downloadProgress.value = msg
+  })
+
+  try {
+    const result = await window.api.claudeDownloadExtension()
+    downloading.value = false
+    if (offDownloadProgress) {
+      offDownloadProgress()
+      offDownloadProgress = null
+    }
+
+    if (result) {
+      downloadProgress.value = null
+      // 下载成功，重新初始化
+      resetAndRetry()
+    } else {
+      downloadProgress.value = null
+      error.value = '下载失败，请检查网络连接后重试'
+    }
+  } catch (e) {
+    downloading.value = false
+    downloadProgress.value = null
+    if (offDownloadProgress) {
+      offDownloadProgress()
+      offDownloadProgress = null
+    }
+    error.value = `下载失败: ${String(e)}`
+  }
+}
+
 async function initWebview() {
   if (!extStore.activeExtensionId || extStore.activeExtensionId !== 'anthropic.claude-code') {
     webviewUrl.value = null
@@ -190,7 +232,8 @@ async function initWebview() {
   try {
     const extPath = await window.api.claudeGetExtensionPath()
     if (!extPath) {
-      error.value = '未找到 Claude Code 扩展路径'
+      // 未找到扩展 — 显示下载界面
+      error.value = '未找到 Claude Code 扩展'
       loading.value = false
       webviewReady = false
       return
@@ -539,6 +582,10 @@ onBeforeUnmount(() => {
     offProcessUnresponsive()
     offProcessUnresponsive = null
   }
+  if (offDownloadProgress) {
+    offDownloadProgress()
+    offDownloadProgress = null
+  }
 })
 
 watch(
@@ -687,7 +734,14 @@ defineExpose({
     <div v-else-if="error" class="chat-empty">
       <div class="empty-content">
         <p class="error">{{ error }}</p>
-        <button class="retry-btn" @click="resetAndRetry">重试</button>
+        <div v-if="downloading" class="download-progress">
+          <div class="download-spinner" />
+          <p>{{ downloadProgress || '正在下载...' }}</p>
+        </div>
+        <template v-else>
+          <button class="retry-btn" @click="handleDownloadExtension">下载 Claude Code 扩展</button>
+          <button class="retry-btn secondary" @click="resetAndRetry" style="margin-left: 8px">重试</button>
+        </template>
       </div>
     </div>
     <div v-else-if="webviewUrl" class="chat-active">
@@ -879,6 +933,40 @@ defineExpose({
 
 .retry-btn:hover {
   background: var(--accent-hover);
+}
+
+.retry-btn.secondary {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.retry-btn.secondary:hover {
+  background: var(--bg-tertiary);
+}
+
+/* 下载进度 */
+.download-progress {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.download-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 /* D-04: 会话列表错误提示 */

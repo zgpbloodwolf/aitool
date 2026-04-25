@@ -554,6 +554,26 @@ export function registerClaudeWebviewHandlers(): void {
     return path
   })
 
+  // 扩展自动下载 — 检测到无 claude-code 扩展时触发
+  ipcMain.handle('claude:download-extension', async () => {
+    safeLog('[ClaudeIPC] 开始下载 Claude Code 扩展...')
+    const { downloadExtension } = await import('../claude/extension-downloader')
+    const result = await downloadExtension((msg) => {
+      const win = BrowserWindow.getAllWindows()[0]
+      if (win) {
+        win.webContents.send('claude:download-progress', msg)
+      }
+    })
+    if (result) {
+      // 重置缓存的 extensionPath，让下次重新发现
+      extensionPath = null
+      safeLog('[ClaudeIPC] 扩展下载完成:', result)
+    } else {
+      safeLog('[ClaudeIPC] 扩展下载失败')
+    }
+    return result
+  })
+
   ipcMain.handle('claude:start-webview-server', async (_event, extPath: string) => {
     safeLog('[ClaudeIPC] 正在为以下路径启动 webview 服务器:', extPath)
     const port = await startWebviewServer(extPath)

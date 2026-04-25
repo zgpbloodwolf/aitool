@@ -39,6 +39,8 @@ interface WindowApi {
   claudeResumeSession: (channelId: string | null, sessionId: string) => Promise<{ success: boolean; error?: string; channelId?: string }>
   claudeRecoverProcess: (channelId: string) => Promise<{ success: boolean; channelId?: string; error?: string }>
   claudeStartWebviewServer: (extensionPath: string) => Promise<number>
+  claudeDownloadExtension: () => Promise<string | null>
+  onDownloadProgress: (callback: (msg: string) => void) => () => void
   claudeWebviewFromWebview: (msg: unknown) => void
   onClaudeMessage: (callback: (msg: unknown) => void) => () => void
   onClaudeError: (callback: (err: string) => void) => () => void

@@ -5,6 +5,7 @@ out
 .eslintcache
 *.log*
 /extension-host/
+extensions/
 .tmp/
 electron.vite.config.1776824226124.mjs
 .planning/
