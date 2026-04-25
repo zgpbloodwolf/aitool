@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { execSync } from 'child_process'
 import { registerDialogHandlers } from './ipc/dialog'
@@ -20,6 +20,21 @@ process.stdout.on('error', (err: NodeJS.ErrnoException) => {
 })
 process.stderr.on('error', (err: NodeJS.ErrnoException) => {
   if (err.code === 'EPIPE') process.exit(0)
+})
+
+// D-24: 全局未捕获异常处理器 — 防止主进程静默崩溃
+process.on('uncaughtException', (err) => {
+  console.error('[主进程] 未捕获异常:', err)
+  // 对可能导致数据丢失的错误弹出对话框
+  const win = BrowserWindow.getAllWindows()[0]
+  if (win) {
+    dialog.showErrorBox('应用错误', '发生意外错误，请查看日志或重启应用。\n' + String(err))
+  }
+})
+
+// D-24: 未处理的 Promise 拒绝 — 仅记录日志，不退出进程
+process.on('unhandledRejection', (reason) => {
+  console.error('[主进程] 未处理的 Promise 拒绝:', reason)
 })
 
 function createWindow(): BrowserWindow {

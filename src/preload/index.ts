@@ -28,16 +28,23 @@ const api = {
     ipcRenderer.invoke('claude:get-extension-path'),
   claudeStartWebviewServer: (extensionPath: string): Promise<number> =>
     ipcRenderer.invoke('claude:start-webview-server', extensionPath),
-  claudeListSessions: (): Promise<SessionInfo[]> =>
-    ipcRenderer.invoke('claude:list-sessions'),
-  claudeGetModel: (): Promise<string> =>
-    ipcRenderer.invoke('claude:get-model'),
+  claudeListSessions: (): Promise<SessionInfo[]> => ipcRenderer.invoke('claude:list-sessions'),
+  claudeGetModel: (): Promise<string> => ipcRenderer.invoke('claude:get-model'),
   claudeDeleteSession: (sessionId: string): Promise<boolean> =>
     ipcRenderer.invoke('claude:delete-session', sessionId),
-  claudeGetContextUsage: (): Promise<Record<string, { inputTokens: number; outputTokens: number }>> =>
-    ipcRenderer.invoke('claude:get-context-usage'),
-  claudeResumeSession: (channelId: string | null, sessionId: string): Promise<{ success: boolean; error?: string; channelId?: string }> =>
+  claudeGetContextUsage: (): Promise<
+    Record<string, { inputTokens: number; outputTokens: number }>
+  > => ipcRenderer.invoke('claude:get-context-usage'),
+  claudeResumeSession: (
+    channelId: string | null,
+    sessionId: string
+  ): Promise<{ success: boolean; error?: string; channelId?: string }> =>
     ipcRenderer.invoke('claude:resume-session', channelId, sessionId),
+  // D-10: 进程恢复 — 崩溃后恢复已退出的 channel
+  claudeRecoverProcess: (
+    channelId: string
+  ): Promise<{ success: boolean; channelId?: string; error?: string }> =>
+    ipcRenderer.invoke('claude:recover-process', channelId),
   claudeWebviewFromWebview: (msg: unknown): void =>
     ipcRenderer.send('claude-webview:from-webview', msg),
   onClaudeMessage: (callback: (msg: unknown) => void): (() => void) => {
@@ -59,6 +66,24 @@ const api = {
     const handler = (_event: Electron.IpcRendererEvent, msg: unknown): void => callback(msg)
     ipcRenderer.on('claude-webview:to-webview', handler)
     return () => ipcRenderer.removeListener('claude-webview:to-webview', handler)
+  },
+  // D-10: 进程崩溃事件 — 通知渲染进程 claude.exe 已崩溃
+  onProcessCrashed: (
+    callback: (data: { channelId: string; canRecover: boolean }) => void
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      data: { channelId: string; canRecover: boolean }
+    ): void => callback(data)
+    ipcRenderer.on('claude:process-crashed', handler)
+    return () => ipcRenderer.removeListener('claude:process-crashed', handler)
+  },
+  // D-11: 进程无响应事件 — 通知渲染进程 claude.exe 挂死
+  onProcessUnresponsive: (callback: (data: { channelId: string }) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: { channelId: string }): void =>
+      callback(data)
+    ipcRenderer.on('claude:process-unresponsive', handler)
+    return () => ipcRenderer.removeListener('claude:process-unresponsive', handler)
   }
 }
 

@@ -124,9 +124,8 @@ describe('ClaudeProcessManager - 心跳检测', () => {
     const onUnresponsive = vi.fn()
 
     // 模拟进程存活（process.kill 不抛异常）
-    const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => {
-      // 进程存在，不抛异常
-    })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const killSpy = vi.spyOn(process as any, 'kill').mockImplementation(() => {})
 
     ;(manager as any)._running = true
     ;(manager as any).process = { pid: 12345 }

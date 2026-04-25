@@ -21,13 +21,25 @@ declare global {
       claudeListSessions: () => Promise<SessionInfo[]>
       claudeGetModel: () => Promise<string>
       claudeDeleteSession: (sessionId: string) => Promise<boolean>
-      claudeGetContextUsage: () => Promise<Record<string, { inputTokens: number; outputTokens: number }>>
-      claudeResumeSession: (channelId: string | null, sessionId: string) => Promise<{ success: boolean; error?: string; channelId?: string }>
+      claudeGetContextUsage: () => Promise<
+        Record<string, { inputTokens: number; outputTokens: number }>
+      >
+      claudeResumeSession: (
+        channelId: string | null,
+        sessionId: string
+      ) => Promise<{ success: boolean; error?: string; channelId?: string }>
+      claudeRecoverProcess: (
+        channelId: string
+      ) => Promise<{ success: boolean; channelId?: string; error?: string }>
       claudeWebviewFromWebview: (msg: unknown) => void
-      onClaudeMessage: (callback: (msg: unknown) => void) => (() => void)
-      onClaudeError: (callback: (err: string) => void) => (() => void)
-      onClaudeExit: (callback: (code: number | null) => void) => (() => void)
-      onClaudeWebviewMessage: (callback: (msg: unknown) => void) => (() => void)
+      onClaudeMessage: (callback: (msg: unknown) => void) => () => void
+      onClaudeError: (callback: (err: string) => void) => () => void
+      onClaudeExit: (callback: (code: number | null) => void) => () => void
+      onClaudeWebviewMessage: (callback: (msg: unknown) => void) => () => void
+      onProcessCrashed: (
+        callback: (data: { channelId: string; canRecover: boolean }) => void
+      ) => () => void
+      onProcessUnresponsive: (callback: (data: { channelId: string }) => void) => () => void
     }
   }
 }

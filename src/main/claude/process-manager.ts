@@ -69,9 +69,11 @@ export class ClaudeProcessManager extends EventEmitter {
     const env = { ...process.env, ...options.env } as Record<string, string>
 
     const args = [
-      '--output-format', 'stream-json',
+      '--output-format',
+      'stream-json',
       '--verbose',
-      '--input-format', 'stream-json',
+      '--input-format',
+      'stream-json',
       '--include-partial-messages',
       '--include-hook-events'
     ]

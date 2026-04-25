@@ -20,6 +20,8 @@ interface PendingToolUse {
 interface PermissionResolver {
   resolve: (response: unknown) => void
   toolUseId: string
+  // D-12: 超时定时器 ID，channel 关闭时需要清理
+  timeoutId: ReturnType<typeof setTimeout>
 }
 
 interface Channel {
@@ -31,6 +33,8 @@ interface Channel {
   sentPermissionRequests: Set<string>
   totalInputTokens: number
   totalOutputTokens: number
+  // D-10: 最后一次启动时的 resumeSessionId，用于崩溃恢复
+  lastSessionId: string | null
 }
 
 const channels = new Map<string, Channel>()
@@ -56,7 +60,7 @@ function getClaudeSettings(): ClaudeSettings {
     const homeDir = process.env.USERPROFILE || process.env.HOME || ''
     const settingsPath = join(homeDir, '.claude', 'settings.json')
 
-    if (settingsCache && (Date.now() - settingsCache.timestamp < SETTINGS_CACHE_TTL_MS)) {
+    if (settingsCache && Date.now() - settingsCache.timestamp < SETTINGS_CACHE_TTL_MS) {
       try {
         const { mtimeMs } = statSync(settingsPath)
         if (mtimeMs === settingsCache.mtimeMs) return settingsCache.data
@@ -74,7 +78,9 @@ function getClaudeSettings(): ClaudeSettings {
       return data
     }
     settingsCache = { data: {}, mtimeMs: 0, timestamp: Date.now() }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return {}
 }
 
@@ -123,7 +129,14 @@ function sendToWebview(msg: unknown): void {
 
 // --- Multi-channel process management ---
 
-async function handleLaunchClaude(channelId: string, cwd: string, _permissionMode: string, _thinkingLevel: string, resumeSessionId?: string, persistent?: boolean): Promise<void> {
+async function handleLaunchClaude(
+  channelId: string,
+  cwd: string,
+  _permissionMode: string,
+  _thinkingLevel: string,
+  resumeSessionId?: string,
+  persistent?: boolean
+): Promise<void> {
   if (channels.has(channelId) || launchingChannels.has(channelId)) {
     safeLog('[ClaudeIPC] 频道已存在或正在启动:', channelId)
     return
@@ -146,12 +159,17 @@ async function handleLaunchClaude(channelId: string, cwd: string, _permissionMod
   const proc = new ClaudeProcessManager()
 
   proc.on('message', (msg: Record<string, unknown>) => {
-    safeLog('[ClaudeIPC] claude.exe 输出 [' + channelId + ']:', JSON.stringify(msg).slice(0, msg.type === 'result' ? 1000 : 150))
+    safeLog(
+      '[ClaudeIPC] claude.exe 输出 [' + channelId + ']:',
+      JSON.stringify(msg).slice(0, msg.type === 'result' ? 1000 : 150)
+    )
 
     const channel = channels.get(channelId)
     if (channel && channel.permissionMode === 'plan') {
       if (msg.type === 'assistant') {
-        const content = (msg.message as Record<string, unknown>)?.content as Array<Record<string, unknown>> | undefined
+        const content = (msg.message as Record<string, unknown>)?.content as
+          | Array<Record<string, unknown>>
+          | undefined
         if (content) {
           for (const block of content) {
             if (block.type === 'text' && typeof block.text === 'string') {
@@ -194,11 +212,19 @@ async function handleLaunchClaude(channelId: string, cwd: string, _permissionMod
       }
 
       if (msg.type === 'assistant') {
-        const content = (msg.message as Record<string, unknown>)?.content as Array<Record<string, unknown>> | undefined
+        const content = (msg.message as Record<string, unknown>)?.content as
+          | Array<Record<string, unknown>>
+          | undefined
         if (content) {
           for (const block of content) {
             if (block.type === 'tool_use' && block.id) {
-              sendToolPermissionRequest(channel, channelId, block.id as string, block.name as string, JSON.stringify(block.input || {}))
+              sendToolPermissionRequest(
+                channel,
+                channelId,
+                block.id as string,
+                block.name as string,
+                JSON.stringify(block.input || {})
+              )
             }
           }
         }
@@ -207,7 +233,9 @@ async function handleLaunchClaude(channelId: string, cwd: string, _permissionMod
 
     // 追踪 token 用量
     if (msg.type === 'stream_event') {
-      const usage = (msg.event as Record<string, unknown>)?.usage as { input_tokens?: number; output_tokens?: number } | undefined
+      const usage = (msg.event as Record<string, unknown>)?.usage as
+        | { input_tokens?: number; output_tokens?: number }
+        | undefined
       if (usage) {
         const ch = channels.get(channelId)
         if (ch) {
@@ -233,9 +261,20 @@ async function handleLaunchClaude(channelId: string, cwd: string, _permissionMod
 
   proc.on('exit', (code) => {
     safeLog('[ClaudeIPC] 进程已退出 [' + channelId + '] 退出码:', code)
-    channels.delete(channelId)
+    // D-10: 崩溃恢复 — 保留 channel 记录用于恢复，通知渲染进程
+    const channel = channels.get(channelId)
+    const canRecover = !!channel?.lastSessionId
     if (!persistent) {
-      sendToWebview({ type: 'close_channel', channelId })
+      // 通知渲染进程进程已崩溃，提供恢复选项
+      const win = BrowserWindow.getAllWindows()[0]
+      if (win) {
+        win.webContents.send('claude:process-crashed', { channelId, canRecover })
+      }
+      // 不立即从 channels 中删除（保持 channel 记录用于恢复）
+      // channel 会在 handleCloseChannel 或恢复成功后清理
+    } else {
+      // persistent channel 保持原有行为
+      channels.delete(channelId)
     }
   })
 
@@ -254,9 +293,21 @@ async function handleLaunchClaude(channelId: string, cwd: string, _permissionMod
     permissionResolvers: new Map(),
     sentPermissionRequests: new Set(),
     totalInputTokens: 0,
-    totalOutputTokens: 0
+    totalOutputTokens: 0,
+    // D-10: 保存 sessionId 用于崩溃恢复
+    lastSessionId: resumeSessionId || null
   })
   launchingChannels.delete(channelId)
+
+  // D-11: 启动心跳检测
+  proc.startHealthCheck(() => {
+    // D-11: 进程无响应回调 — 通知渲染进程
+    safeLog('[ClaudeIPC] 进程无响应 [' + channelId + ']')
+    const win = BrowserWindow.getAllWindows()[0]
+    if (win) {
+      win.webContents.send('claude:process-unresponsive', { channelId })
+    }
+  })
 }
 
 function handleIoMessage(channelId: string, message: unknown, _done?: boolean): void {
@@ -285,24 +336,40 @@ function handleInterrupt(channelId: string): void {
   channel.process.interrupt()
 }
 
-function sendToolPermissionRequest(channel: Channel, channelId: string, toolUseId: string, toolName: string, inputJson: string): void {
+function sendToolPermissionRequest(
+  channel: Channel,
+  channelId: string,
+  toolUseId: string,
+  toolName: string,
+  inputJson: string
+): void {
   if (channel.sentPermissionRequests.has(toolUseId)) return
   channel.sentPermissionRequests.add(toolUseId)
 
   let inputs: unknown = {}
   try {
     inputs = JSON.parse(inputJson || '{}')
-  } catch { /* use empty */ }
+  } catch {
+    /* use empty */
+  }
 
   safeLog('[ClaudeIPC] 检测到 tool_use:', toolName, 'id:', toolUseId)
 
   const requestId = `perm_${Date.now()}_${Math.random().toString(36).slice(2)}`
 
+  // D-12: 创建 resolver 占位，setTimeout 后更新 timeoutId
+  const resolver: PermissionResolver = {
+    resolve: () => {},
+    toolUseId,
+    timeoutId: null as unknown as ReturnType<typeof setTimeout>
+  }
+
   const promise = new Promise<unknown>((resolve) => {
-    channel.permissionResolvers.set(requestId, { resolve, toolUseId })
+    resolver.resolve = resolve
   })
 
-  const timeout = setTimeout(() => {
+  // D-12: 超时定时器 — 5 分钟后自动拒绝
+  resolver.timeoutId = setTimeout(() => {
     if (channel.permissionResolvers.has(requestId)) {
       channel.permissionResolvers.delete(requestId)
       safeLog('[ClaudeIPC] 工具权限请求超时:', requestId)
@@ -311,12 +378,17 @@ function sendToolPermissionRequest(channel: Channel, channelId: string, toolUseI
         session_id: '',
         message: {
           role: 'user',
-          content: [{ type: 'tool_result', tool_use_id: toolUseId, content: '权限请求超时', is_error: true }]
+          content: [
+            { type: 'tool_result', tool_use_id: toolUseId, content: '权限请求超时', is_error: true }
+          ]
         },
         parent_tool_use_id: toolUseId
       })
     }
   }, 300000)
+
+  // 将 resolver 存入 channel（包含 timeoutId 供后续清理）
+  channel.permissionResolvers.set(requestId, resolver)
 
   sendToWebview({
     type: 'request',
@@ -331,10 +403,12 @@ function sendToolPermissionRequest(channel: Channel, channelId: string, toolUseI
   })
 
   promise.then((response) => {
-    clearTimeout(timeout)
+    clearTimeout(resolver.timeoutId)
     channel.permissionResolvers.delete(requestId)
 
-    const resp = response as { result?: { behavior?: string; updatedInput?: unknown; message?: string } } | undefined
+    const resp = response as
+      | { result?: { behavior?: string; updatedInput?: unknown; message?: string } }
+      | undefined
     const result = resp?.result
 
     safeLog('[ClaudeIPC] 工具权限响应:', result?.behavior, '对应:', toolUseId)
@@ -346,11 +420,13 @@ function sendToolPermissionRequest(channel: Channel, channelId: string, toolUseI
         session_id: '',
         message: {
           role: 'user',
-          content: [{
-            type: 'tool_result',
-            tool_use_id: toolUseId,
-            content: typeof answer === 'string' ? answer : JSON.stringify(answer)
-          }]
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: toolUseId,
+              content: typeof answer === 'string' ? answer : JSON.stringify(answer)
+            }
+          ]
         },
         parent_tool_use_id: toolUseId
       })
@@ -360,12 +436,14 @@ function sendToolPermissionRequest(channel: Channel, channelId: string, toolUseI
         session_id: '',
         message: {
           role: 'user',
-          content: [{
-            type: 'tool_result',
-            tool_use_id: toolUseId,
-            content: result?.message || '用户已拒绝',
-            is_error: true
-          }]
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: toolUseId,
+              content: result?.message || '用户已拒绝',
+              is_error: true
+            }
+          ]
         },
         parent_tool_use_id: toolUseId
       })
@@ -377,6 +455,11 @@ function handleCloseChannel(channelId: string): void {
   const channel = channels.get(channelId)
   if (!channel) return
   safeLog('[ClaudeIPC] 正在关闭频道:', channelId)
+  // D-12: 清理所有 pending 的超时定时器
+  for (const resolver of channel.permissionResolvers.values()) {
+    clearTimeout(resolver.timeoutId)
+  }
+  channel.permissionResolvers.clear()
   channel.process.stop()
   channels.delete(channelId)
 }
@@ -422,7 +505,13 @@ export function registerClaudeWebviewHandlers(): void {
 
     switch (msg.type) {
       case 'launch_claude':
-        handleLaunchClaude(msg.channelId, msg.cwd, msg.permissionMode, msg.thinkingLevel, msg.resumeSessionId)
+        handleLaunchClaude(
+          msg.channelId,
+          msg.cwd,
+          msg.permissionMode,
+          msg.thinkingLevel,
+          msg.resumeSessionId
+        )
         return
       case 'io_message':
         handleIoMessage(msg.channelId, msg.message, msg.done)
@@ -496,7 +585,8 @@ export function registerClaudeWebviewHandlers(): void {
       channels.delete(channelId)
     }
 
-    const effectiveChannelId = channelId || `ch_${Date.now()}_${Math.random().toString(36).slice(2)}`
+    const effectiveChannelId =
+      channelId || `ch_${Date.now()}_${Math.random().toString(36).slice(2)}`
 
     const messages = await getSessionMessages(sessionId, currentCwd)
     for (const obj of messages) {
@@ -507,11 +597,47 @@ export function registerClaudeWebviewHandlers(): void {
     await handleLaunchClaude(effectiveChannelId, currentCwd, 'default', '', sessionId, true)
     return { success: true, channelId: effectiveChannelId }
   })
+
+  // D-10: 崩溃恢复 — 渲染进程调用此 IPC 恢复已崩溃的 channel
+  ipcMain.handle('claude:recover-process', async (_event, channelId: string) => {
+    safeLog('[ClaudeIPC] 正在恢复崩溃进程，频道:', channelId)
+    const channel = channels.get(channelId)
+    if (!channel) {
+      return { success: false, error: '频道不存在' }
+    }
+
+    const sessionId = channel.lastSessionId
+    if (!sessionId) {
+      channels.delete(channelId)
+      return { success: false, error: '无可恢复的会话 ID' }
+    }
+
+    // 清理旧 channel（停止心跳和清理定时器）
+    for (const resolver of channel.permissionResolvers.values()) {
+      clearTimeout(resolver.timeoutId)
+    }
+    channel.permissionResolvers.clear()
+    channel.process.removeAllListeners()
+    channel.process.stop()
+    channels.delete(channelId)
+
+    // 使用保存的 sessionId 重新启动
+    try {
+      await handleLaunchClaude(channelId, currentCwd, 'default', '', sessionId)
+      return { success: true, channelId }
+    } catch (e) {
+      return { success: false, error: String(e) }
+    }
+  })
 }
 
 // --- Webview Request Handler ---
 
-async function handleWebviewRequest(msg: { requestId?: string; channelId?: string; request?: { type: string; [key: string]: unknown } }): Promise<void> {
+async function handleWebviewRequest(msg: {
+  requestId?: string
+  channelId?: string
+  request?: { type: string; [key: string]: unknown }
+}): Promise<void> {
   const requestType = msg.request?.type
   const requestId = msg.requestId
   const channelId = msg.channelId
@@ -622,13 +748,21 @@ async function handleWebviewRequest(msg: { requestId?: string; channelId?: strin
     }
     case 'list_sessions_request': {
       const sessions = await listSessions(currentCwd)
-      sendToWebview({ requestId, type: 'response', response: { type: 'list_sessions_response', sessions } })
+      sendToWebview({
+        requestId,
+        type: 'response',
+        response: { type: 'list_sessions_response', sessions }
+      })
       break
     }
     case 'get_session_request': {
       const sessionId = msg.request?.sessionId as string | undefined
       const messages = await getSessionMessages(sessionId || '', currentCwd)
-      sendToWebview({ requestId, type: 'response', response: { type: 'get_session_response', messages } })
+      sendToWebview({
+        requestId,
+        type: 'response',
+        response: { type: 'get_session_response', messages }
+      })
       break
     }
     case 'open_file':
@@ -762,7 +896,11 @@ async function handleWebviewRequest(msg: { requestId?: string; channelId?: strin
       break
     }
     default: {
-      safeLog('[ClaudeIPC] 未处理的请求类型:', requestType, JSON.stringify(msg.request || {}).slice(0, 300))
+      safeLog(
+        '[ClaudeIPC] 未处理的请求类型:',
+        requestType,
+        JSON.stringify(msg.request || {}).slice(0, 300)
+      )
       sendToWebview({
         requestId,
         type: 'response',
@@ -775,10 +913,15 @@ async function handleWebviewRequest(msg: { requestId?: string; channelId?: strin
 
 // --- Plugin Management ---
 
-async function handleListPlugins(requestId: string | undefined, request: Record<string, unknown> | undefined): Promise<void> {
+async function handleListPlugins(
+  requestId: string | undefined,
+  request: Record<string, unknown> | undefined
+): Promise<void> {
   try {
     const includeAvailable = request?.includeAvailable ? ' --available' : ''
-    const output = await runClaudeCliCommand(['plugin', 'list', '--json', includeAvailable].filter(Boolean))
+    const output = await runClaudeCliCommand(
+      ['plugin', 'list', '--json', includeAvailable].filter(Boolean)
+    )
     const parsed = JSON.parse(output.trim())
     sendToWebview({
       requestId,
@@ -795,15 +938,21 @@ async function handleListPlugins(requestId: string | undefined, request: Record<
   }
 }
 
-async function handlePluginCommand(requestId: string | undefined, subcommand: string, request: Record<string, unknown> | undefined): Promise<void> {
+async function handlePluginCommand(
+  requestId: string | undefined,
+  subcommand: string,
+  request: Record<string, unknown> | undefined
+): Promise<void> {
   try {
     const args = ['plugin']
     if (subcommand.startsWith('marketplace')) {
       const parts = subcommand.split(' ')
       args.push('marketplace', parts[1])
       if (parts[1] === 'add' && request?.source) args.push(String(request.source))
-      else if (parts[1] === 'remove' && request?.marketplaceId) args.push(String(request.marketplaceId));
-      else if (parts[1] === 'update' && request?.marketplaceId) args.push(String(request.marketplaceId))
+      else if (parts[1] === 'remove' && request?.marketplaceId)
+        args.push(String(request.marketplaceId))
+      else if (parts[1] === 'update' && request?.marketplaceId)
+        args.push(String(request.marketplaceId))
     } else if (subcommand === 'install') {
       args.push('install', String(request?.pluginId || ''))
       if (request?.scope) args.push('--scope', String(request.scope))
