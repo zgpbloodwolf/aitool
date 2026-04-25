@@ -1,5 +1,5 @@
 // Claude Code 扩展安装 — 从项目内置 vsix 解压到 extensions/ 目录
-import { createReadStream, existsSync, mkdirSync, readdirSync, renameSync, rmdirSync, unlinkSync } from 'fs'
+import { createReadStream, existsSync, mkdirSync, readdirSync, renameSync, rmdirSync, unlinkSync, copyFileSync } from 'fs'
 import { join, basename } from 'path'
 import { app } from 'electron'
 import { safeLog } from './logger'
@@ -60,7 +60,9 @@ export async function setupExtension(
 
   const vsixPath = findLocalVsix()
   if (!vsixPath) {
-    onProgress?.('未找到内置的 Claude Code 扩展包')
+    const msg = '未找到内置的 Claude Code 扩展包'
+    safeLog('[ExtensionSetup] ' + msg + '，搜索目录: ' + getResourcesDir())
+    onProgress?.(msg)
     return null
   }
 
@@ -79,19 +81,30 @@ export async function setupExtension(
   mkdirSync(targetDir, { recursive: true })
 
   try {
-    // 使用 PowerShell 解压 vsix（zip 格式）
+    // PowerShell Expand-Archive 只支持 .zip 扩展名，先复制为 .zip
+    const { tmpdir } = await import('os')
+    const zipPath = join(tmpdir(), `claude-code-setup-${Date.now()}.zip`)
+    copyFileSync(vsixPath, zipPath)
+
     const { execSync } = await import('child_process')
-    const psCommand = `Expand-Archive -Path "${vsixPath}" -DestinationPath "${targetDir}" -Force`
+    const psCommand = `Expand-Archive -Path "${zipPath}" -DestinationPath "${targetDir}" -Force`
     execSync(`powershell -Command "${psCommand}"`, { timeout: 120000 })
 
-    // vsix 解压后内容在 extension/ 子目录，移到根目录
-    const extensionSubDir = join(targetDir, 'extension')
-    if (existsSync(extensionSubDir)) {
-      const items = readdirSync(extensionSubDir)
-      for (const item of items) {
-        renameSync(join(extensionSubDir, item), join(targetDir, item))
+    // 清理临时 zip
+    try { unlinkSync(zipPath) } catch { /* ignore */ }
+
+    // 解压后提升目录结构：如果顶层只有一个子目录（如 extension/ 或同名目录），提到上层
+    const items = readdirSync(targetDir)
+    if (items.length === 1) {
+      const subDir = join(targetDir, items[0])
+      const subStat = await import('fs').then(fs => fs.statSync(subDir))
+      if (subStat.isDirectory()) {
+        const subItems = readdirSync(subDir)
+        for (const item of subItems) {
+          renameSync(join(subDir, item), join(targetDir, item))
+        }
+        try { rmdirSync(subDir) } catch { /* ignore */ }
       }
-      try { rmdirSync(extensionSubDir) } catch { /* ignore */ }
     }
 
     onProgress?.('Claude Code 扩展安装完成')
