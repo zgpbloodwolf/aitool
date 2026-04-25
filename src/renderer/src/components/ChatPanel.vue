@@ -264,7 +264,7 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
 }
 
-async function resumeSession(sessionId: string): Promise<void> {
+async function resumeSession(sessionId: string, summary?: string): Promise<void> {
   showSessionHistory.value = false
 
   // Find channelId for the active tab
@@ -287,6 +287,11 @@ async function resumeSession(sessionId: string): Promise<void> {
       if (tabId === activeTabId.value) channelToTab.delete(chId)
     }
     channelToTab.set(result.channelId, activeTabId.value)
+    // D-13: 恢复会话后用摘要更新标签名
+    if (summary?.trim()) {
+      const tab = tabs.value.find(t => t.id === activeTabId.value)
+      if (tab) tab.label = summary.trim().slice(0, 20)
+    }
     showStatus('会话已恢复', 'info', 2000)
   } else if (!result.success) {
     showStatus('恢复失败: ' + (result.error || '未知错误'), 'error', 3000)
@@ -781,7 +786,7 @@ defineExpose({
                 v-for="s in sortedSessions"
                 :key="s.id"
                 class="session-item"
-                @click="resumeSession(s.id)"
+                @click="resumeSession(s.id, s.summary)"
               >
                 <div class="session-summary">{{ s.summary || '(无摘要)' }}</div>
                 <div class="session-meta">
