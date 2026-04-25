@@ -12,7 +12,7 @@ Fix the 429 rate limit error caused by injecting `modelUsage` and `total_cost_us
 
 - [x] **Phase 1: Root Cause Fix** - Remove modelUsage/total_cost_usd injection, verify 429 resolved, preserve badge from stream_event data only
 - [x] **Phase 2: Defensive Hardening** - Deep-copy messages before forwarding, cache settings reads
-- [ ] **Phase 3: UX Enhancement** - 错误恢复、键盘快捷键、操作确认、进程监控、标签页增强、文件树增强、安全加固
+- [x] **Phase 3: UX Enhancement** - 错误恢复、键盘快捷键、操作确认、进程监控、标签页增强、文件树增强、安全加固
 
 ## Phase Details
 
@@ -57,12 +57,12 @@ Plans:
 **Plans**: 6 plans
 
 Plans:
-- [ ] 03-01-PLAN.md -- ConfirmDialog 组件 + 错误恢复与确认集成 (D-01,02,03,04,06,07,08,09)
-- [ ] 03-02-PLAN.md -- 键盘快捷键 + 标签拖拽排序 (D-05, D-16)
-- [ ] 03-03-PLAN.md -- 进程健康监控 + 全局异常处理 (D-10,11,12,24)
-- [ ] 03-04-PLAN.md -- 标签页体验增强: 智能标签名 + 状态指示器 + 中键关闭 (D-13,14,15)
-- [ ] 03-05-PLAN.md -- 侧边栏与文件树增强: 拖拽宽度 + 文件监听 + 搜索 + 收藏 (D-17,18,19,20)
-- [ ] 03-06-PLAN.md -- 安全加固: UUID 验证 + 符号链接解析 + iframe sandbox (D-21,22,23)
+- [x] 03-01-PLAN.md -- ConfirmDialog 组件 + 错误恢复与确认集成 (D-01,02,03,04,06,07,08,09)
+- [x] 03-02-PLAN.md -- 键盘快捷键 + 标签拖拽排序 (D-05, D-16)
+- [x] 03-03-PLAN.md -- 进程健康监控 + 全局异常处理 (D-10,11,12,24)
+- [x] 03-04-PLAN.md -- 标签页体验增强: 智能标签名 + 状态指示器 + 中键关闭 (D-13,14,15)
+- [x] 03-05-PLAN.md -- 侧边栏与文件树增强: 拖拽宽度 + 文件监听 + 搜索 + 收藏 (D-17,18,19,20)
+- [x] 03-06-PLAN.md -- 安全加固: UUID 验证 + 符号链接解析 + iframe sandbox (D-21,22,23)
 
 ## Progress
 
@@ -73,4 +73,4 @@ Phases execute in numeric order: 1, 2, 3
 |-------|----------------|--------|-----------|
 | 1. Root Cause Fix | 1/1 | Complete | 2026-04-24 |
 | 2. Defensive Hardening | 1/1 | Complete | 2026-04-24 |
-| 3. UX Enhancement | 0/6 | Planning | — |
+| 3. UX Enhancement | 6/6 | Complete | 2026-04-25 |

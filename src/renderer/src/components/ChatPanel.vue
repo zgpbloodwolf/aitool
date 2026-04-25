@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue'
+import { ref, reactive, onMounted, onBeforeUnmount, watch, computed } from 'vue'
 import { useExtensionStore } from '../stores/extension'
 import ConfirmDialog from './ConfirmDialog.vue'
 import type { SessionInfo } from '../../../shared/types'
@@ -117,8 +117,7 @@ async function handleSystemMessage(msg: Record<string, unknown>, _channelId: str
   switch (subtype) {
     case 'init': {
       showStatus('Claude 会话已就绪', 'info', 2000)
-      // D-14: init 表示进程已就绪等待输入，设为 idle
-      if (tabId) tabStatuses.value.set(tabId, 'idle')
+      // D-14: init 不重置状态，由 update_session_state 统一管理
 
       // D-13: 提取智能标签名
       let newLabel: string | null = null
@@ -158,7 +157,7 @@ async function handleSystemMessage(msg: Record<string, unknown>, _channelId: str
     }
     case 'result':
       clearStatus()
-      if (tabId) tabStatuses.value.set(tabId, 'idle')
+      // D-14: 状态由 update_session_state 统一管理
       break
     default:
       break
@@ -215,6 +214,7 @@ async function initWebview() {
 function addNewTab() {
   const id = generateTabId()
   tabs.value.push({ id, label: `对话 ${tabs.value.length + 1}` })
+  tabOrder.set(id, tabs.value.length - 1)
   activeTabId.value = id
 }
 
@@ -379,18 +379,6 @@ function forwardToWebview(msg: unknown) {
     handleSystemMessage(m.message as Record<string, unknown>, m.channelId)
   }
 
-  // D-14: 检测权限请求消息，设置 waiting 状态
-  if (m?.message?.type === 'request' && m.channelId) {
-    const reqTabId = channelToTab.get(m.channelId)
-    if (reqTabId) tabStatuses.value.set(reqTabId, 'waiting')
-  }
-
-  // D-14: result → idle
-  if (m?.message?.type === 'result' && m.channelId) {
-    const resultTabId = channelToTab.get(m.channelId)
-    if (resultTabId) tabStatuses.value.set(resultTabId, 'idle')
-  }
-
   if (m?.channelId) {
     // Route to the iframe that owns this channelId
     const tabId = channelToTab.get(m.channelId)
@@ -433,8 +421,6 @@ function handleIframeMessage(event: MessageEvent) {
     if (sourceTabId && message?.type === 'io_message') {
       const inner = message.message as Record<string, unknown> | undefined
       if (inner?.type === 'user') {
-        // D-14: 用户发送消息时设为 running
-        tabStatuses.value.set(sourceTabId, 'running')
         const tab = tabs.value.find(t => t.id === sourceTabId)
         if (tab && tab.label.startsWith('对话')) {
           let userText = ''
@@ -456,16 +442,26 @@ function handleIframeMessage(event: MessageEvent) {
       }
     }
 
-    // D-13: 从 webview 的 update_session_state 提取标题（更可靠）
+    // D-13/D-14: 从 webview 的 update_session_state 提取标题和状态
     if (message?.type === 'request') {
       const req = message.request as Record<string, unknown> | undefined
-      if (req?.type === 'update_session_state' && typeof req.title === 'string') {
+      if (req?.type === 'update_session_state') {
         const cid = req.channelId as string | undefined
-        const tabId = cid ? channelToTab.get(cid) : null
+        const tabId = cid ? channelToTab.get(cid) : (sourceTabId || null)
         if (tabId) {
-          const tab = tabs.value.find(t => t.id === tabId)
-          if (tab && req.title.trim()) {
-            tab.label = String(req.title).trim().slice(0, 20)
+          // D-14: 用 webview 的 state 字段驱动标签状态
+          if (typeof req.state === 'string') {
+            const validStates = ['running', 'idle', 'waiting']
+            if (validStates.includes(req.state)) {
+              tabStatuses.value.set(tabId, req.state as 'running' | 'idle' | 'waiting')
+            }
+          }
+          // D-13: 提取标题
+          if (typeof req.title === 'string') {
+            const tab = tabs.value.find(t => t.id === tabId)
+            if (tab && req.title.trim()) {
+              tab.label = String(req.title).trim().slice(0, 20)
+            }
           }
         }
       }
@@ -577,6 +573,8 @@ function switchToPrevTab(): void {
 // D-16: 标签拖拽排序状态
 const draggedTabId = ref<string | null>(null)
 const dragOverTabId = ref<string | null>(null)
+// D-16: 用 CSS order 实现视觉排序，避免移动 iframe DOM 导致重载
+const tabOrder = reactive(new Map<string, number>())
 
 /** D-16: 拖拽开始 */
 function onDragStart(e: DragEvent, tabId: string): void {
@@ -605,21 +603,17 @@ function onDragLeave(tabId: string): void {
   }
 }
 
-/** D-16: 拖拽放置 — 执行标签数组重排 */
+/** D-16: 拖拽放置 — 交换 CSS order 值 */
 function onDrop(_e: DragEvent, targetTabId: string): void {
   if (!draggedTabId.value || draggedTabId.value === targetTabId) {
     onDragEnd()
     return
   }
-  const fromIdx = tabs.value.findIndex((t) => t.id === draggedTabId.value)
-  const toIdx = tabs.value.findIndex((t) => t.id === targetTabId)
-  if (fromIdx === -1 || toIdx === -1) {
-    onDragEnd()
-    return
-  }
-  // 从原位置移除并插入到目标位置
-  const [moved] = tabs.value.splice(fromIdx, 1)
-  tabs.value.splice(toIdx, 0, moved)
+  const fromOrder = tabOrder.get(draggedTabId.value) ?? 0
+  const toOrder = tabOrder.get(targetTabId) ?? 0
+  // 交换 order 值实现视觉重排，不移动 DOM
+  tabOrder.set(draggedTabId.value, toOrder)
+  tabOrder.set(targetTabId, fromOrder)
   onDragEnd()
 }
 
@@ -704,6 +698,7 @@ defineExpose({
             v-for="tab in tabs"
             :key="tab.id"
             class="tab-item"
+            :style="{ order: tabOrder.get(tab.id) ?? tabs.indexOf(tab) }"
             :class="{
               active: tab.id === activeTabId,
               dragging: draggedTabId === tab.id,
