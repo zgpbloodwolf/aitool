@@ -82,15 +82,10 @@ const pendingResume = new Map<string, string>()
 let offWebviewMessage: (() => void) | null = null
 let offProcessCrashed: (() => void) | null = null
 let offProcessUnresponsive: (() => void) | null = null
-let offDownloadProgress: (() => void) | null = null
 let tabCounter = 0
 
 // D-11: 无响应的 channel 集合，用于显示重启按钮
 const unresponsiveChannels = ref<Set<string>>(new Set())
-
-// 扩展下载状态
-const downloading = ref(false)
-const downloadProgress = ref<string | null>(null)
 
 function generateTabId(): string {
   return `session-${Date.now()}-${++tabCounter}`
@@ -177,47 +172,6 @@ function resetAndRetry(): void {
   webviewReady = false
   error.value = null
   initWebview()
-}
-
-/** 自动下载 Claude Code 扩展 */
-async function handleDownloadExtension(): Promise<void> {
-  if (downloading.value) return
-  downloading.value = true
-  downloadProgress.value = '正在准备下载...'
-
-  offDownloadProgress = window.api.onDownloadProgress((msg) => {
-    downloadProgress.value = msg
-  })
-
-  try {
-    const result = await window.api.claudeDownloadExtension()
-    downloading.value = false
-    if (offDownloadProgress) {
-      offDownloadProgress()
-      offDownloadProgress = null
-    }
-
-    if (result) {
-      downloadProgress.value = null
-      // 下载成功，重新加载扩展列表并初始化
-      await extStore.loadExtensions()
-      if (!extStore.activeExtensionId && extStore.extensions.length > 0) {
-        extStore.activeExtensionId = extStore.extensions[0].id
-      }
-      resetAndRetry()
-    } else {
-      downloadProgress.value = null
-      error.value = '下载失败，请检查网络连接后重试'
-    }
-  } catch (e) {
-    downloading.value = false
-    downloadProgress.value = null
-    if (offDownloadProgress) {
-      offDownloadProgress()
-      offDownloadProgress = null
-    }
-    error.value = `下载失败: ${String(e)}`
-  }
 }
 
 async function initWebview() {
@@ -586,10 +540,6 @@ onBeforeUnmount(() => {
     offProcessUnresponsive()
     offProcessUnresponsive = null
   }
-  if (offDownloadProgress) {
-    offDownloadProgress()
-    offDownloadProgress = null
-  }
 })
 
 watch(
@@ -726,14 +676,7 @@ defineExpose({
       <div class="empty-content">
         <div class="empty-icon">&#x1F916;</div>
         <h2>欢迎使用 AI 工具</h2>
-        <div v-if="downloading" class="download-progress">
-          <div class="download-spinner" />
-          <p>{{ downloadProgress || '正在下载...' }}</p>
-        </div>
-        <template v-else>
-          <p>未检测到 Claude Code 扩展，需要先下载</p>
-          <button class="retry-btn" @click="handleDownloadExtension">下载 Claude Code 扩展</button>
-        </template>
+        <p>正在准备 Claude Code 扩展...</p>
       </div>
     </div>
     <div v-else-if="loading" class="chat-empty">
@@ -744,14 +687,7 @@ defineExpose({
     <div v-else-if="error" class="chat-empty">
       <div class="empty-content">
         <p class="error">{{ error }}</p>
-        <div v-if="downloading" class="download-progress">
-          <div class="download-spinner" />
-          <p>{{ downloadProgress || '正在下载...' }}</p>
-        </div>
-        <template v-else>
-          <button class="retry-btn" @click="handleDownloadExtension">下载 Claude Code 扩展</button>
-          <button class="retry-btn secondary" @click="resetAndRetry" style="margin-left: 8px">重试</button>
-        </template>
+        <button class="retry-btn" @click="resetAndRetry">重试</button>
       </div>
     </div>
     <div v-else-if="webviewUrl" class="chat-active">
@@ -943,40 +879,6 @@ defineExpose({
 
 .retry-btn:hover {
   background: var(--accent-hover);
-}
-
-.retry-btn.secondary {
-  background: transparent;
-  color: var(--text-secondary);
-  border: 1px solid var(--border);
-}
-
-.retry-btn.secondary:hover {
-  background: var(--bg-tertiary);
-}
-
-/* 下载进度 */
-.download-progress {
-  margin-top: 16px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  color: var(--text-secondary);
-  font-size: 13px;
-}
-
-.download-spinner {
-  width: 24px;
-  height: 24px;
-  border: 2px solid var(--border);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
 }
 
 /* D-04: 会话列表错误提示 */

@@ -58,14 +58,6 @@ const api = {
     channelId: string
   ): Promise<{ success: boolean; channelId?: string; error?: string }> =>
     ipcRenderer.invoke('claude:recover-process', channelId),
-  // 扩展自动下载
-  claudeDownloadExtension: (): Promise<string | null> =>
-    ipcRenderer.invoke('claude:download-extension'),
-  onDownloadProgress: (callback: (msg: string) => void): (() => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, msg: string): void => callback(msg)
-    ipcRenderer.on('claude:download-progress', handler)
-    return () => ipcRenderer.removeListener('claude:download-progress', handler)
-  },
   claudeWebviewFromWebview: (msg: unknown): void =>
     ipcRenderer.send('claude-webview:from-webview', msg),
   onClaudeMessage: (callback: (msg: unknown) => void): (() => void) => {

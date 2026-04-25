@@ -9,7 +9,9 @@
       "Bash(npm run *)",
       "Bash(powershell -Command \"Get-Process electron -ErrorAction SilentlyContinue | Stop-Process -Force\")",
       "Bash(node scripts/run-dev.js dev)",
-      "Bash(npx vue-tsc *)"
+      "Bash(npx vue-tsc *)",
+      "Bash(npx vitest *)",
+      "Bash(npx electron-vite *)"
     ]
   }
 }

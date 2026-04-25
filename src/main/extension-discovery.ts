@@ -2,6 +2,7 @@ import { readdir, readFile, stat } from 'fs/promises'
 import { join } from 'path'
 import { app } from 'electron'
 import type { ExtensionInfo } from '../shared/types'
+import { setupExtension } from './claude/extension-setup'
 
 export type DiscoveredExtension = ExtensionInfo
 
@@ -11,80 +12,73 @@ const TARGET_EXTENSIONS = new Set([
   'openai.codex'
 ])
 
-// 搜索候选目录：项目内置 extensions/ + VS Code 扩展目录
-async function getSearchDirs(): Promise<string[]> {
-  const dirs: string[] = []
-
-  // 1. 项目内置 extensions/ 目录（打包后从 resources 目录找，开发时从项目根目录找）
+// 只搜索项目内置 extensions/ 目录
+function getExtensionsDir(): string {
   const appPath = app.isPackaged ? process.resourcesPath : app.getAppPath()
-  const bundledDir = join(appPath, 'extensions')
-  try {
-    await stat(bundledDir)
-    dirs.push(bundledDir)
-  } catch {
-    // 目录不存在，跳过
-  }
-
-  // 2. VS Code 扩展目录
-  const homeDir = process.env.USERPROFILE || process.env.HOME || ''
-  const vscodeDirs = [
-    join(homeDir, '.vscode', 'extensions'),
-    join(homeDir, '.vscode-insiders', 'extensions')
-  ]
-  for (const dir of vscodeDirs) {
-    try {
-      await stat(dir)
-      dirs.push(dir)
-    } catch {
-      continue
-    }
-  }
-
-  return dirs
+  return join(appPath, 'extensions')
 }
 
 export async function discoverExtensions(): Promise<DiscoveredExtension[]> {
-  const searchDirs = await getSearchDirs()
-  if (searchDirs.length === 0) return []
+  const extensionsDir = getExtensionsDir()
+
+  // 先尝试发现已有扩展
+  let extensions = await scanDir(extensionsDir)
+
+  // 没找到 claude-code 扩展 → 自动从内置 vsix 解压
+  if (!extensions.some(e => e.id === 'anthropic.claude-code')) {
+    console.log('[ExtensionDiscovery] 未找到 claude-code 扩展，尝试自动安装...')
+    const result = await setupExtension()
+    if (result) {
+      extensions = await scanDir(extensionsDir)
+    }
+  }
+
+  return extensions
+}
+
+async function scanDir(extensionsDir: string): Promise<DiscoveredExtension[]> {
+  try {
+    await stat(extensionsDir)
+  } catch {
+    return []
+  }
 
   const byId = new Map<string, DiscoveredExtension>()
 
-  for (const extensionsDir of searchDirs) {
-    try {
-      const entries = await readdir(extensionsDir, { withFileTypes: true })
+  try {
+    const entries = await readdir(extensionsDir, { withFileTypes: true })
 
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
 
-        const packageJsonPath = join(extensionsDir, entry.name, 'package.json')
-        try {
-          const content = await readFile(packageJsonPath, 'utf-8')
-          const pkg = JSON.parse(content)
-          const extId = `${pkg.publisher}.${pkg.name}`.toLowerCase()
+      const packageJsonPath = join(extensionsDir, entry.name, 'package.json')
+      try {
+        const content = await readFile(packageJsonPath, 'utf-8')
+        const pkg = JSON.parse(content)
+        const extId = `${pkg.publisher}.${pkg.name}`.toLowerCase()
 
-          if (TARGET_EXTENSIONS.has(extId)) {
-            const ext: DiscoveredExtension = {
-              id: extId,
-              name: pkg.displayName || pkg.name,
-              version: pkg.version,
-              description: pkg.description || '',
-              publisher: pkg.publisher || '',
-              extensionPath: join(extensionsDir, entry.name),
-              iconPath: pkg.icon ? join(extensionsDir, entry.name, pkg.icon) : undefined
-            }
-
-            const existing = byId.get(extId)
-            if (!existing || ext.version.localeCompare(existing.version, undefined, { numeric: true }) > 0) {
-              byId.set(extId, ext)
-            }
+        if (TARGET_EXTENSIONS.has(extId)) {
+          const ext: DiscoveredExtension = {
+            id: extId,
+            name: pkg.displayName || pkg.name,
+            version: pkg.version,
+            description: pkg.description || '',
+            publisher: pkg.publisher || '',
+            extensionPath: join(extensionsDir, entry.name),
+            iconPath: pkg.icon ? join(extensionsDir, entry.name, pkg.icon) : undefined
           }
-        } catch {
-          continue
+
+          const existing = byId.get(extId)
+          if (!existing || ext.version.localeCompare(existing.version, undefined, { numeric: true }) > 0) {
+            byId.set(extId, ext)
+          }
         }
+      } catch {
+        continue
       }
-    } catch {
-      continue
     }
+  } catch {
+    // ignore
   }
 
   return Array.from(byId.values())
