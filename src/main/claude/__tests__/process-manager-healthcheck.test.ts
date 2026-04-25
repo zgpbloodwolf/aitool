@@ -20,7 +20,13 @@ describe('ClaudeProcessManager - 心跳检测', () => {
 
   afterEach(() => {
     vi.useRealTimers()
-    manager.stop()
+    // 安全清理：确保 stop() 不会因 mock 不完整而崩溃
+    if ((manager as any).process && !(manager as any).process.kill) {
+      ;(manager as any).process = null
+      ;(manager as any)._running = false
+    } else {
+      manager.stop()
+    }
   })
 
   it('startHealthCheck 在 intervalMs 后检测到进程不存活时调用 onUnresponsive', () => {
