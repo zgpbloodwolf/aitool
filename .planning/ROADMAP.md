@@ -125,6 +125,13 @@ Plans:
 - 跟随系统模式自动适配 Windows 明暗设置
 - 设置页面切换主题
 
+**Plans**: 3 plans
+
+Plans:
+- [ ] 05-01-PLAN.md — CSS 变量双主题 + 设置 store + preload IPC + 主题初始化 + 设置面板主题 UI
+- [ ] 05-02-PLAN.md — 硬编码颜色迁移 (ChatPanel/ConfirmDialog/UpdatePrompt/SettingsDrawer)
+- [ ] 05-03-PLAN.md — 主进程 nativeTheme + webview 参数化 + 通知窗口主题同步
+
 **Success Criteria**:
   1. 暗色、亮色、跟随系统三种主题均可正常切换
   2. 切换主题后所有 UI 元素（包括 webview）样式一致
@@ -230,8 +237,8 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 1. Root Cause Fix | 1/1 | Complete | 2026-04-24 |
 | 2. Defensive Hardening | 1/1 | Complete | 2026-04-24 |
 | 3. UX Enhancement | 6/6 | Complete | 2026-04-25 |
-| 4. Quick Wins | 3/5 | In Progress | - |
-| 5. 主题个性化 | 0/- | Not started | - |
+| 4. Quick Wins | 5/5 | Complete | 2026-04-26 |
+| 5. 主题个性化 | 0/3 | Planned | - |
 | 6. 知识管理 | 0/- | Not started | - |
 | 7. 工作流增强 | 0/- | Not started | - |
 | 8. 高级特性 | 0/- | Not started | - |
