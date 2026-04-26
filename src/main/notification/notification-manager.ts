@@ -61,10 +61,11 @@ export class NotificationManager {
         case 'click':
         case 'view':
         case 'reply':
+          // 先恢复主窗口
+          this.mainWindow.show()
+          this.mainWindow.focus()
           // 跳转到对应标签页
           if (entry.channelId) {
-            this.mainWindow.show()
-            this.mainWindow.focus()
             this.mainWindow.webContents.send('notification:focus-tab', entry.channelId)
           }
           break

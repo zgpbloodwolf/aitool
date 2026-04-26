@@ -106,8 +106,19 @@
     function action(act) {
       var replyText = document.getElementById('replyInput')
         ? document.getElementById('replyInput').value : undefined
-      if (window.api && window.api.notificationAction) {
-        window.api.notificationAction(id, act, replyText)
+      // contextIsolation: false + sandbox: false，可以直接用 require
+      try {
+        var ipcRenderer = require('electron').ipcRenderer
+        ipcRenderer.send('notification:action', {
+          notificationId: id,
+          action: act,
+          replyText: replyText
+        })
+      } catch (e) {
+        // fallback: 尝试 window.api
+        if (window.api && window.api.notificationAction) {
+          window.api.notificationAction(id, act, replyText)
+        }
       }
     }
   </script>
