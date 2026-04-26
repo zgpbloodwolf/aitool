@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, onBeforeUnmount, watch, computed } from 'vue'
+import { ref, reactive, onMounted, onBeforeUnmount, watch, computed, nextTick } from 'vue'
 import { useExtensionStore } from '../stores/extension'
+import { useSettingsStore } from '../stores/settings'
 import ConfirmDialog from './ConfirmDialog.vue'
 import type { SessionInfo } from '../../../shared/types'
 
@@ -10,6 +11,7 @@ interface SessionTab {
 }
 
 const extStore = useExtensionStore()
+const settingsStore = useSettingsStore()
 const webviewUrl = ref<string | null>(null)
 // D-23: 存储 webview 端口，用于 postMessage 精确 origin
 const webviewPort = ref<number>(0)
@@ -540,6 +542,17 @@ onBeforeUnmount(() => {
     offProcessUnresponsive()
     offProcessUnresponsive = null
   }
+})
+
+// 主题切换时重新加载 webview iframe，使 webview 跟随主题变化
+watch(() => settingsStore.settings.theme, () => {
+  nextTick(() => {
+    for (const iframe of iframeRefs.value.values()) {
+      if (iframe) {
+        iframe.src = iframe.src
+      }
+    }
+  })
 })
 
 watch(
