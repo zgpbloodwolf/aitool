@@ -10,6 +10,7 @@ import { stopWebviewServer } from './claude/webview-server'
 import { setupTray, registerTrayHandlers } from './tray/tray-manager'
 import { NotificationManager } from './notification/notification-manager'
 import { setNotificationManager } from './notification/notification-registry'
+import { setupAutoUpdater } from './updater/auto-updater'
 
 // 设置 Windows 控制台代码页为 UTF-8，防止中文日志乱码
 if (process.platform === 'win32') {
@@ -134,6 +135,9 @@ app.whenReady().then(() => {
   // 通知管理器初始化
   const notifMgr = new NotificationManager(mainWindow)
   setNotificationManager(notifMgr)
+
+  // D-12: 自动更新初始化（检查 GitHub Releases）
+  setupAutoUpdater(mainWindow)
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

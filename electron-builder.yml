@@ -1,5 +1,9 @@
 appId: com.aitools.desktop
 productName: AI Tools
+publish:
+  - provider: github
+    owner: zhengenpeng
+    repo: new-aitools
 directories:
   buildResources: build
 files:
