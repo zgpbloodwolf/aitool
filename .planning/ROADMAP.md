@@ -96,6 +96,15 @@
 - 下载完成后提示重启安装
 - 下载进度显示
 
+**Plans**: 5 plans
+
+Plans:
+- [ ] 04-01-PLAN.md — Settings store + Settings drawer UI + title bar gear icon
+- [ ] 04-02-PLAN.md — System tray icon with smart close behavior
+- [ ] 04-03-PLAN.md — Sound playback + global zoom composables
+- [ ] 04-04-PLAN.md — Interactive notification system (custom BrowserWindow)
+- [ ] 04-05-PLAN.md — Auto-update via electron-updater + GitHub Releases
+
 **Success Criteria**:
   1. Claude 回复完成、工具权限请求、异常错误时发送 Windows 原生通知
   2. 通知上可直接操作（允许/拒绝权限、选择方案、文本回复），无需跳转
@@ -221,7 +230,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 1. Root Cause Fix | 1/1 | Complete | 2026-04-24 |
 | 2. Defensive Hardening | 1/1 | Complete | 2026-04-24 |
 | 3. UX Enhancement | 6/6 | Complete | 2026-04-25 |
-| 4. Quick Wins | 0/- | Not started | - |
+| 4. Quick Wins | 0/5 | Planning | - |
 | 5. 主题个性化 | 0/- | Not started | - |
 | 6. 知识管理 | 0/- | Not started | - |
 | 7. 工作流增强 | 0/- | Not started | - |
