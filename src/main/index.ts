@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog, nativeTheme } from 'electron'
 import { join } from 'path'
 import { execSync } from 'child_process'
 import { registerDialogHandlers } from './ipc/dialog'
@@ -6,7 +6,7 @@ import { registerFilesystemHandlers } from './ipc/filesystem'
 import { registerExtensionHandlers } from './ipc/extensions'
 import { registerClaudeWebviewHandlers, shutdownClaude } from './ipc/claude-webview'
 import { registerFileWatcherHandlers, stopAllWatchers } from './ipc/file-watcher'
-import { stopWebviewServer } from './claude/webview-server'
+import { stopWebviewServer, setWebviewTheme } from './claude/webview-server'
 import { setupTray, registerTrayHandlers } from './tray/tray-manager'
 import { NotificationManager } from './notification/notification-manager'
 import { setNotificationManager } from './notification/notification-registry'
@@ -42,6 +42,9 @@ process.on('unhandledRejection', (reason) => {
   console.error('[主进程] 未处理的 Promise 拒绝:', reason)
 })
 
+// D-04: 当前 resolved 主题状态（模块级别，供 getCurrentTheme 导出使用）
+let currentResolvedTheme: 'dark' | 'light' = nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
+
 function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
     width: 1200,
@@ -51,7 +54,7 @@ function createWindow(): BrowserWindow {
     show: true,
     frame: true,
     title: 'AI 工具',
-    backgroundColor: '#1e1e2e',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#1e1e2e' : '#eff1f5',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -132,6 +135,25 @@ app.whenReady().then(() => {
   setupTray(mainWindow)
   registerTrayHandlers()
 
+  // D-04: 系统主题检测 — 监听 Windows 明暗设置变化
+  nativeTheme.on('updated', () => {
+    const resolved = nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
+    currentResolvedTheme = resolved
+    mainWindow.webContents.send('theme:system-changed', resolved)
+    // 同步更新窗口背景色和 webview 主题
+    mainWindow.setBackgroundColor(resolved === 'dark' ? '#1e1e2e' : '#eff1f5')
+    setWebviewTheme(resolved)
+  })
+
+  // 渲染进程通知主进程主题变更 — 存储 resolved 主题并同步 webview
+  ipcMain.on('theme:update', (_event, _mode: string, resolved?: string) => {
+    if (resolved === 'dark' || resolved === 'light') {
+      currentResolvedTheme = resolved
+      mainWindow.setBackgroundColor(resolved === 'dark' ? '#1e1e2e' : '#eff1f5')
+      setWebviewTheme(resolved)
+    }
+  })
+
   // 通知管理器初始化
   const notifMgr = new NotificationManager(mainWindow)
   setNotificationManager(notifMgr)
@@ -155,3 +177,8 @@ app.on('window-all-closed', () => {
     app.quit()
   }
 })
+
+/** 获取当前 resolved 主题（供通知管理器等模块使用） */
+export function getCurrentTheme(): 'dark' | 'light' {
+  return currentResolvedTheme
+}

@@ -15,6 +15,14 @@ const MIME_TYPES: Record<string, string> = {
 let server: Server | null = null
 let serverPort = 0
 
+/** 当前 resolved 主题，用于 webview HTML 生成 */
+let currentTheme: 'dark' | 'light' = 'dark'
+
+/** 更新 webview 主题 — 由主进程调用 */
+export function setWebviewTheme(theme: 'dark' | 'light'): void {
+  currentTheme = theme
+}
+
 export async function startWebviewServer(extensionPath: string): Promise<number> {
   if (server) return serverPort
 
