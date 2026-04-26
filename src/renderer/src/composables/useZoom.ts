@@ -1,13 +1,13 @@
-import { webFrame } from 'electron'
 import { useSettingsStore } from '../stores/settings'
 
 /**
  * 应用缩放因子到整个应用
- * D-10: Shell UI 使用 webFrame.setZoomFactor()，webview iframe 使用 CSS zoom
+ * D-10: Shell UI 使用 webFrame.setZoomFactor()（通过 preload），webview iframe 使用 CSS zoom
  */
 export function applyZoom(factor: number): void {
   const clamped = Math.max(0.8, Math.min(2.0, factor))
-  webFrame.setZoomFactor(clamped)
+  // 通过 preload 暴露的 API 调用 webFrame（渲染进程不能直接 import electron）
+  window.api.setZoomFactor(clamped)
 
   // 同步 CSS zoom 到所有 webview iframe
   document.querySelectorAll('.webview-iframe').forEach((iframe) => {

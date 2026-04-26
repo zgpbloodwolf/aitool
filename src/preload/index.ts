@@ -138,6 +138,12 @@ const api = {
     return () => ipcRenderer.removeListener('notification:play-sound', handler)
   },
 
+  // 缩放 IPC — 渲染进程通过 preload 调用 webFrame
+  setZoomFactor: (factor: number): void => {
+    const { webFrame } = require('electron')
+    webFrame.setZoomFactor(factor)
+  },
+
   // 自动更新 IPC
   updaterCheck: (): Promise<{ version: string | null; error?: string }> =>
     ipcRenderer.invoke('updater:check'),
