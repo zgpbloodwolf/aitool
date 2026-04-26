@@ -6,7 +6,7 @@ import { resolveClaudeBinary } from '../claude/binary-resolver'
 import { startWebviewServer } from '../claude/webview-server'
 import { addAllowedRoot } from './filesystem'
 import { safeLog, safeError } from '../claude/logger'
-import { listSessions, getSessionMessages, deleteSession } from '../claude/session-store'
+import { listSessions, getSessionMessages, deleteSession, exportSessionAsMarkdown } from '../claude/session-store'
 import { discoverSkills, runClaudeCliCommand } from '../claude/plugin-manager'
 import { handleGetMcpServers, handleMcpServerCommand } from '../claude/mcp-manager'
 import { notificationManager } from '../notification/notification-registry'
@@ -667,6 +667,21 @@ export function registerClaudeWebviewHandlers(): void {
       return { success: false, error: String(e) }
     }
   })
+
+  // UX-07: 获取活跃标签对应的会话 ID
+  ipcMain.handle('claude:get-active-session-id', async (_event, channelId: string) => {
+    const channel = channels.get(channelId)
+    return channel?.lastSessionId || null
+  })
+
+  // UX-07: 导出会话为 Markdown 文件
+  ipcMain.handle(
+    'claude:export-session',
+    async (_event, sessionId: string, title: string, savePath: string) => {
+      safeLog('[ClaudeIPC] 正在导出会话:', sessionId)
+      return await exportSessionAsMarkdown(sessionId, title, savePath, currentCwd)
+    }
+  )
 }
 
 // --- Webview Request Handler ---

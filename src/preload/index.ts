@@ -161,6 +161,20 @@ const api = {
   // 自动更新 IPC
   updaterCheck: (): Promise<{ version: string | null; error?: string }> =>
     ipcRenderer.invoke('updater:check'),
+
+  // 对话导出 (UX-07)
+  showSaveDialog: (
+    options: { defaultPath: string; title: string }
+  ): Promise<{ canceled: boolean; filePath: string }> =>
+    ipcRenderer.invoke('dialog:showSaveDialog', options),
+  getActiveSessionId: (channelId: string): Promise<string | null> =>
+    ipcRenderer.invoke('claude:get-active-session-id', channelId),
+  exportSession: (
+    sessionId: string,
+    title: string,
+    savePath: string
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('claude:export-session', sessionId, title, savePath),
   updaterDownload: (): void => ipcRenderer.send('updater:download'),
   updaterInstall: (): void => ipcRenderer.send('updater:install'),
   onUpdaterAvailable: (

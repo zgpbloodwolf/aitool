@@ -15,3 +15,9 @@ export interface SessionInfo {
   summary: string | undefined
   gitBranch: string | undefined
 }
+
+/** 对话导出结果 (UX-07) */
+export interface ExportSessionResult {
+  success: boolean
+  error?: string
+}

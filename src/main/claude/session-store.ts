@@ -1,4 +1,4 @@
-import { readFile, stat, readdir, open, unlink } from 'fs/promises'
+import { readFile, stat, readdir, open, unlink, writeFile } from 'fs/promises'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { safeLog, safeError } from './logger'
@@ -170,4 +170,99 @@ export async function deleteSession(sessionId: string, cwd: string): Promise<boo
   await unlink(filePath)
   safeLog('[SessionStore] 已删除会话:', sessionId)
   return true
+}
+
+/**
+ * 将消息数组格式化为 Markdown 文本 (UX-07)
+ *
+ * D-01: 过滤 system 消息和工具调用细节，仅保留 user + assistant
+ * D-02: 文件头包含标题和导出日期
+ * D-03: 保留原始 Markdown 代码块，不做额外处理
+ *
+ * @param messages - JSONL 消息数组
+ * @param title - 会话标题
+ * @param date - 导出日期（YYYY-MM-DD 格式）
+ * @returns 格式化后的 Markdown 字符串
+ */
+export function formatMessagesAsMarkdown(
+  messages: unknown[],
+  title: string,
+  date: string
+): string {
+  const lines: string[] = []
+  // D-02: 文件头
+  lines.push(`# ${title}`)
+  lines.push(`> 导出于 ${date}`)
+  lines.push('')
+
+  for (const msg of messages) {
+    const obj = msg as Record<string, unknown>
+    // D-01: 过滤 system 消息
+    if (obj.type === 'system') continue
+    if (obj.isSidechain || obj.isMeta) continue
+
+    const content = (obj.message as Record<string, unknown>)?.content
+    if (!Array.isArray(content)) continue
+
+    if (obj.type === 'user') {
+      lines.push('## 用户')
+      lines.push('')
+      for (const block of content) {
+        const b = block as Record<string, unknown>
+        // D-01: 只保留 text block
+        if (b.type === 'text' && typeof b.text === 'string' && b.text) {
+          lines.push(b.text)
+        }
+      }
+      lines.push('')
+    } else if (obj.type === 'assistant') {
+      lines.push('## 助手')
+      lines.push('')
+      for (const block of content) {
+        const b = block as Record<string, unknown>
+        // D-01: 过滤 tool_use 和 thinking，只保留 text
+        if (b.type === 'text' && typeof b.text === 'string' && b.text) {
+          // D-03: 保留原始 Markdown 代码块
+          lines.push(b.text)
+        }
+      }
+      lines.push('')
+    }
+  }
+
+  return lines.join('\n')
+}
+
+/**
+ * 将会话导出为 Markdown 文件 (UX-07)
+ *
+ * @param sessionId - 会话 ID（UUID 格式）
+ * @param title - 会话标题
+ * @param savePath - 保存路径
+ * @param cwd - 工作目录
+ * @returns 导出结果
+ */
+export async function exportSessionAsMarkdown(
+  sessionId: string,
+  title: string,
+  savePath: string,
+  cwd: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // 验证 sessionId 为 UUID 格式，防止路径遍历 (per T-06-02)
+    if (!UUID_RE.test(sessionId)) {
+      safeError('[SessionStore] 导出失败，无效的 sessionId 格式:', sessionId)
+      return { success: false, error: '无效的会话 ID 格式' }
+    }
+
+    const messages = await getSessionMessages(sessionId, cwd)
+    const date = new Date().toISOString().split('T')[0]
+    const markdown = formatMessagesAsMarkdown(messages, title, date)
+    await writeFile(savePath, markdown, 'utf8')
+    safeLog('[SessionStore] 会话已导出:', sessionId, '路径:', savePath)
+    return { success: true }
+  } catch (e) {
+    safeError('[SessionStore] 导出会话失败:', e)
+    return { success: false, error: String(e) }
+  }
 }

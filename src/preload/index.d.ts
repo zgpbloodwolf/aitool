@@ -62,6 +62,16 @@ declare global {
       ) => () => void
       onUpdaterDownloaded: (callback: () => void) => () => void
       onUpdaterError: (callback: (data: { message: string }) => void) => () => void
+      // 对话导出 (UX-07)
+      showSaveDialog: (
+        options: { defaultPath: string; title: string }
+      ) => Promise<{ canceled: boolean; filePath: string }>
+      getActiveSessionId: (channelId: string) => Promise<string | null>
+      exportSession: (
+        sessionId: string,
+        title: string,
+        savePath: string
+      ) => Promise<{ success: boolean; error?: string }>
     }
   }
 }
