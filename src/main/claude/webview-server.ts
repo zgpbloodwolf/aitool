@@ -254,6 +254,33 @@ export function stopWebviewServer(): void {
 }
 
 function generateHostHtml(_extensionPath: string): string {
+  // 根据 currentTheme 动态生成 CSS 变量值
+  const colors = currentTheme === 'dark' ? {
+    bg: '#1e1e2e', fg: '#cdd6f4', sidebar: '#181825', activity: '#11111b',
+    input: { bg: '#313244', fg: '#cdd6f4', border: '#45475a', placeholder: '#6c7086' },
+    focus: '#89b4fa', badge: { bg: '#89b4fa', fg: '#1e1e2e' },
+    button: { bg: '#89b4fa', fg: '#1e1e2e', hover: '#74c7ec' },
+    scrollbar: { bg: '#45475a80', hover: '#585b7080' },
+    list: { hover: '#313244', activeBg: '#45475a', activeFg: '#cdd6f4' },
+    dropdown: { bg: '#313244', border: '#45475a', fg: '#cdd6f4' },
+    menu: { bg: '#313244', fg: '#cdd6f4', border: '#45475a', selBg: '#45475a', selFg: '#cdd6f4' },
+    notif: { bg: '#313244', fg: '#cdd6f4', border: '#45475a' },
+    titleFg: '#cdd6f4', titleInactiveFg: '#6c7086',
+    error: '#f38ba8', warning: '#f9e2af'
+  } : {
+    bg: '#eff1f5', fg: '#4c4f69', sidebar: '#e6e9ef', activity: '#dce0e8',
+    input: { bg: '#ccd0da', fg: '#4c4f69', border: '#bcc0cc', placeholder: '#9ca0b0' },
+    focus: '#1e66f5', badge: { bg: '#1e66f5', fg: '#eff1f5' },
+    button: { bg: '#1e66f5', fg: '#eff1f5', hover: '#209fb5' },
+    scrollbar: { bg: '#bcc0cc80', hover: '#acb0be80' },
+    list: { hover: '#ccd0da', activeBg: '#bcc0cc', activeFg: '#4c4f69' },
+    dropdown: { bg: '#ccd0da', border: '#bcc0cc', fg: '#4c4f69' },
+    menu: { bg: '#ccd0da', fg: '#4c4f69', border: '#bcc0cc', selBg: '#bcc0cc', selFg: '#4c4f69' },
+    notif: { bg: '#ccd0da', fg: '#4c4f69', border: '#bcc0cc' },
+    titleFg: '#4c4f69', titleInactiveFg: '#9ca0b0',
+    error: '#d20f39', warning: '#fe640b'
+  }
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -264,43 +291,43 @@ function generateHostHtml(_extensionPath: string): string {
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body, #root { width: 100%; height: 100%; overflow: hidden; }
-    body { background: #1e1e2e; color: #cdd6f4; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    body { background: ${colors.bg}; color: ${colors.fg}; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
 
     /* VSCode CSS variable overrides for standalone mode */
     :root {
-      --vscode-input-background: #313244;
-      --vscode-input-foreground: #cdd6f4;
-      --vscode-input-border: #45475a;
-      --vscode-input-placeholderForeground: #6c7086;
-      --vscode-focusBorder: #89b4fa;
-      --vscode-inputOption-activeBorder: #89b4fa;
-      --vscode-editor-background: #1e1e2e;
-      --vscode-editor-foreground: #cdd6f4;
-      --vscode-sideBar-background: #181825;
-      --vscode-activityBar-background: #11111b;
-      --vscode-titleBar-activeForeground: #cdd6f4;
-      --vscode-titleBar-inactiveForeground: #6c7086;
-      --vscode-badge-background: #89b4fa;
-      --vscode-badge-foreground: #1e1e2e;
-      --vscode-button-background: #89b4fa;
-      --vscode-button-foreground: #1e1e2e;
-      --vscode-button-hoverBackground: #74c7ec;
-      --vscode-scrollbarSlider-background: #45475a80;
-      --vscode-scrollbarSlider-hoverBackground: #585b7080;
-      --vscode-list-hoverBackground: #313244;
-      --vscode-list-activeSelectionBackground: #45475a;
-      --vscode-list-activeSelectionForeground: #cdd6f4;
-      --vscode-dropdown-background: #313244;
-      --vscode-dropdown-border: #45475a;
-      --vscode-dropdown-foreground: #cdd6f4;
-      --vscode-menu-background: #313244;
-      --vscode-menu-foreground: #cdd6f4;
-      --vscode-menu-border: #45475a;
-      --vscode-menu-selectionBackground: #45475a;
-      --vscode-menu-selectionForeground: #cdd6f4;
-      --vscode-notifications-background: #313244;
-      --vscode-notifications-foreground: #cdd6f4;
-      --vscode-notifications-border: #45475a;
+      --vscode-input-background: ${colors.input.bg};
+      --vscode-input-foreground: ${colors.input.fg};
+      --vscode-input-border: ${colors.input.border};
+      --vscode-input-placeholderForeground: ${colors.input.placeholder};
+      --vscode-focusBorder: ${colors.focus};
+      --vscode-inputOption-activeBorder: ${colors.focus};
+      --vscode-editor-background: ${colors.bg};
+      --vscode-editor-foreground: ${colors.fg};
+      --vscode-sideBar-background: ${colors.sidebar};
+      --vscode-activityBar-background: ${colors.activity};
+      --vscode-titleBar-activeForeground: ${colors.titleFg};
+      --vscode-titleBar-inactiveForeground: ${colors.titleInactiveFg};
+      --vscode-badge-background: ${colors.badge.bg};
+      --vscode-badge-foreground: ${colors.badge.fg};
+      --vscode-button-background: ${colors.button.bg};
+      --vscode-button-foreground: ${colors.button.fg};
+      --vscode-button-hoverBackground: ${colors.button.hover};
+      --vscode-scrollbarSlider-background: ${colors.scrollbar.bg};
+      --vscode-scrollbarSlider-hoverBackground: ${colors.scrollbar.hover};
+      --vscode-list-hoverBackground: ${colors.list.hover};
+      --vscode-list-activeSelectionBackground: ${colors.list.activeBg};
+      --vscode-list-activeSelectionForeground: ${colors.list.activeFg};
+      --vscode-dropdown-background: ${colors.dropdown.bg};
+      --vscode-dropdown-border: ${colors.dropdown.border};
+      --vscode-dropdown-foreground: ${colors.dropdown.fg};
+      --vscode-menu-background: ${colors.menu.bg};
+      --vscode-menu-foreground: ${colors.menu.fg};
+      --vscode-menu-border: ${colors.menu.border};
+      --vscode-menu-selectionBackground: ${colors.menu.selBg};
+      --vscode-menu-selectionForeground: ${colors.menu.selFg};
+      --vscode-notifications-background: ${colors.notif.bg};
+      --vscode-notifications-foreground: ${colors.notif.fg};
+      --vscode-notifications-border: ${colors.notif.border};
     }
   </style>
   <link rel="stylesheet" href="/index.css">
@@ -406,6 +433,13 @@ function generateHostHtml(_extensionPath: string): string {
       var CONTEXT_USABLE = 128000 - 13000 - 16384;
       var usedTokens = 0;
 
+      // 主题颜色（由主进程注入）
+      var badgeColors = {
+        error: '${colors.error}',
+        warning: '${colors.warning}',
+        focus: '${colors.focus}'
+      };
+
       // Track token usage from stream events forwarded by main process
       window.addEventListener('message', function(e) {
         var data = e.data;
@@ -432,13 +466,13 @@ function generateHostHtml(_extensionPath: string): string {
         badge.textContent = pct + '%';
         if (pct > 90) {
           badge.style.background = 'rgba(243,139,168,0.2)';
-          badge.style.color = '#f38ba8';
+          badge.style.color = badgeColors.error;
         } else if (pct > 70) {
           badge.style.background = 'rgba(249,226,175,0.2)';
-          badge.style.color = '#f9e2af';
+          badge.style.color = badgeColors.warning;
         } else {
           badge.style.background = 'rgba(137,180,250,0.15)';
-          badge.style.color = '#89b4fa';
+          badge.style.color = badgeColors.focus;
         }
 
         if (!inserted) {

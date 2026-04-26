@@ -7,6 +7,7 @@
  */
 import { BrowserWindow, screen, ipcMain, app } from 'electron'
 import { join } from 'path'
+import { getCurrentTheme } from '../index'
 
 interface NotificationEntry {
   window: BrowserWindow
@@ -211,7 +212,8 @@ export class NotificationManager {
       type: options.type,
       title: options.title,
       body: options.body,
-      toolName: options.toolName || ''
+      toolName: options.toolName || '',
+      theme: getCurrentTheme()
     })
 
     // 开发模式和生产模式使用不同路径

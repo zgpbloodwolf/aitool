@@ -12,11 +12,11 @@
       overflow: hidden;
     }
     .notif-card {
-      background: #1e1e2e;
-      border: 1px solid #45475a;
+      background: var(--notif-bg);
+      border: 1px solid var(--notif-border);
       border-radius: 8px;
       padding: 12px 16px;
-      color: #cdd6f4;
+      color: var(--notif-text);
       font-size: 13px;
       animation: slideIn 0.25s ease;
       box-shadow: 0 4px 16px rgba(0,0,0,0.3);
@@ -27,32 +27,32 @@
       to { transform: translateX(0); opacity: 1; }
     }
     .notif-title { font-weight: 600; margin-bottom: 4px; font-size: 13px; }
-    .notif-body { color: #a6adc8; font-size: 12px; line-height: 1.4; }
+    .notif-body { color: var(--notif-subtext); font-size: 12px; line-height: 1.4; }
     .notif-actions { display: flex; gap: 8px; margin-top: 8px; }
     .notif-btn {
       padding: 4px 12px; border-radius: 4px; border: none; font-size: 12px; cursor: pointer;
     }
-    .notif-btn-allow { background: #a6e3a1; color: #1e1e2e; }
-    .notif-btn-allow:hover { background: #94d991; }
-    .notif-btn-deny { background: #f38ba8; color: #1e1e2e; }
-    .notif-btn-deny:hover { background: #f07090; }
-    .notif-btn-view { background: #89b4fa; color: #1e1e2e; }
-    .notif-btn-view:hover { background: #74c7ec; }
-    .notif-btn-error { background: #45475a; color: #cdd6f4; }
-    .notif-btn-error:hover { background: #585b70; }
+    .notif-btn-allow { background: var(--notif-success); color: var(--notif-btn-text); }
+    .notif-btn-allow:hover { background: var(--notif-success-hover); }
+    .notif-btn-deny { background: var(--notif-error); color: var(--notif-btn-text); }
+    .notif-btn-deny:hover { background: var(--notif-error-hover); }
+    .notif-btn-view { background: var(--notif-accent); color: var(--notif-btn-text); }
+    .notif-btn-view:hover { background: var(--notif-accent-hover); }
+    .notif-btn-error { background: var(--notif-hover); color: var(--notif-text); }
+    .notif-btn-error:hover { background: var(--notif-border); }
     .notif-input {
       width: 100%;
       padding: 4px 8px;
       border-radius: 4px;
-      border: 1px solid #45475a;
-      background: #181825;
-      color: #cdd6f4;
+      border: 1px solid var(--notif-border);
+      background: var(--notif-input-bg);
+      color: var(--notif-text);
       font-size: 12px;
       margin-top: 8px;
       box-sizing: border-box;
       outline: none;
     }
-    .notif-input:focus { border-color: #89b4fa; }
+    .notif-input:focus { border-color: var(--notif-accent); }
   </style>
 </head>
 <body>
@@ -64,6 +64,35 @@
     var title = params.get('title') || ''
     var body = params.get('body') || ''
     var toolName = params.get('toolName') || ''
+
+    // 根据主题参数动态设置 CSS 变量
+    var theme = params.get('theme') || 'dark'
+    var colors = theme === 'light' ? {
+      bg: '#eff1f5', border: '#bcc0cc', text: '#4c4f69', subtext: '#5c5f77',
+      accent: '#1e66f5', success: '#40a02b', error: '#d20f39',
+      inputBg: '#e6e9ef', hover: '#acb0be', accentHover: '#209fb5',
+      successHover: '#6cc644', errorHover: '#e64553', btnText: '#eff1f5'
+    } : {
+      bg: '#1e1e2e', border: '#45475a', text: '#cdd6f4', subtext: '#a6adc8',
+      accent: '#89b4fa', success: '#a6e3a1', error: '#f38ba8',
+      inputBg: '#181825', hover: '#585b70', accentHover: '#74c7ec',
+      successHover: '#94d991', errorHover: '#f07090', btnText: '#1e1e2e'
+    }
+
+    var root = document.documentElement
+    root.style.setProperty('--notif-bg', colors.bg)
+    root.style.setProperty('--notif-border', colors.border)
+    root.style.setProperty('--notif-text', colors.text)
+    root.style.setProperty('--notif-subtext', colors.subtext)
+    root.style.setProperty('--notif-accent', colors.accent)
+    root.style.setProperty('--notif-success', colors.success)
+    root.style.setProperty('--notif-error', colors.error)
+    root.style.setProperty('--notif-input-bg', colors.inputBg)
+    root.style.setProperty('--notif-hover', colors.hover)
+    root.style.setProperty('--notif-accent-hover', colors.accentHover)
+    root.style.setProperty('--notif-success-hover', colors.successHover)
+    root.style.setProperty('--notif-error-hover', colors.errorHover)
+    root.style.setProperty('--notif-btn-text', colors.btnText)
 
     var card = document.getElementById('card')
 
