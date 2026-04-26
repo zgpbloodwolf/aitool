@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useSettingsStore, type CloseBehavior } from '../stores/settings'
+import { useSettingsStore, type CloseBehavior, type ThemeMode } from '../stores/settings'
 
 const settingsStore = useSettingsStore()
 
@@ -13,6 +13,18 @@ const closeOptions: { value: CloseBehavior; label: string }[] = [
   { value: 'quit', label: '退出应用' },
   { value: 'ask', label: '每次询问' }
 ]
+
+/** 主题选项 (05-01) */
+const themeOptions: { value: ThemeMode; label: string }[] = [
+  { value: 'dark', label: '暗色' },
+  { value: 'light', label: '亮色' },
+  { value: 'system', label: '跟随系统' }
+]
+
+/** 更新主题设置 */
+function updateTheme(value: ThemeMode): void {
+  settingsStore.update({ theme: value })
+}
 
 /** 更新关闭行为 — 同步到 settings store 和主进程 JSON 文件 */
 function updateCloseBehavior(value: CloseBehavior): void {
@@ -33,6 +45,27 @@ function updateCloseBehavior(value: CloseBehavior): void {
 
         <!-- 滚动内容区 -->
         <div class="drawer-body">
+
+          <!-- 主题 (05-01) -->
+          <section class="settings-section">
+            <h3 class="section-title">主题</h3>
+            <div
+              v-for="opt in themeOptions"
+              :key="opt.value"
+              class="setting-row radio-row"
+              @click="updateTheme(opt.value)"
+            >
+              <input
+                type="radio"
+                name="theme-mode"
+                :value="opt.value"
+                :checked="settingsStore.settings.theme === opt.value"
+                class="radio-input"
+                @click.stop="updateTheme(opt.value)"
+              />
+              <span class="setting-label">{{ opt.label }}</span>
+            </div>
+          </section>
 
           <!-- 声音提示 (D-08) -->
           <section class="settings-section">
