@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-04-24)
 
 **Core value:** Users can interact with Claude Code in the desktop client without 429 rate limit errors
-**Current focus:** Phase 5 complete, ready for Phase 6
+**Current focus:** Phase 7 planned, ready to execute
 
 ## Current Position
 
-Phase: 7 of 9 (工作流增强) — CONTEXT GATHERED
-Plan: 0/- in current phase
-Status: Context captured, ready for planning
-Last activity: 2026-04-26 -- Phase 7 context gathered
+Phase: 7 of 9 (工作流增强) — PLANNED
+Plan: 3/3 in current phase (2 waves)
+Status: Ready to execute
+Last activity: 2026-04-26 -- Phase 7 planning complete
 
-Progress: [########..] 80% (phases 1-5 complete, phase 7 context gathered)
+Progress: [########..] ~78% (phases 1-6 complete, phase 7 planned, 2 phases remaining)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 11
+- Total plans completed: 12
 - Average duration: ~6 min
-- Total execution time: ~1h 20min
+- Total execution time: ~1h 23min
 
 **By Phase:**
 
@@ -34,8 +34,8 @@ Progress: [########..] 80% (phases 1-5 complete, phase 7 context gathered)
 | 5. 主题个性化 | 3 | ~16 min | ~5 min |
 
 **Recent Trend:**
-- Last 5 plans: 04-05 (4min), 05-01 (4min), 05-02 (6min), 05-03 (6min)
-- Trend: Consistent execution, parallel Wave 2 completed in ~6 min total
+- Last 5 plans: 05-03 (6min), 06-01 (5min), 06-02 (3min), 06-03 (3min), 06-04 (3min)
+- Trend: Consistent execution, Phase 6 complete
 
 *Updated after each plan completion*
 
@@ -48,6 +48,8 @@ Recent decisions affecting current work:
 
 - Research confirmed `modelUsage`/`total_cost_usd` injection into `result` messages activates dormant webview code path, most likely causing 429 via Zhipu AI's strict concurrency limits
 - 关闭行为使用独立 JSON 文件存储（userData/close-behavior.json）而非 IPC 桥接 localStorage，因为主进程在渲染进程未就绪时就需要读取
+- ClipboardPanel 使用 Teleport to body 避免 z-index 层叠问题，通过 App.vue handleShortcut 转发到 ChatPanel.toggleClipboardPanel
+- Ctrl+Shift+V 在主进程 before-input-event 拦截确保 iframe 焦点时也能触发
 
 ### Pending Todos
 
@@ -70,5 +72,5 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-04-26
-Stopped at: Phase 7 (工作流增强) context gathered — ready for planning
-Resume file: .planning/phases/07-workflow-enhancement/07-CONTEXT.md
+Stopped at: Completed 06-04-PLAN.md (clipboard panel UI + Ctrl+Shift+V shortcut)
+Resume file: None — Phase 6 complete, ready for Phase 7

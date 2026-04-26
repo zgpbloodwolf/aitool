@@ -25,12 +25,13 @@
 - ✓ Token 用量追踪与上下文进度显示
 - ✓ 状态栏消息显示（系统消息、重试状态等）
 - ✓ 主题个性化 — 暗色/亮色/跟随系统三种主题 (Phase 5)
+- ✓ 知识管理 — 对话导出 Markdown、剪贴板历史与收藏片段 (Phase 6)
 
 ### Active
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] 知识管理 — 对话导出、剪贴板增强 (Phase 6)
+- [ ] 工作流增强 — Token 用量统计、Windows 右键菜单集成 (Phase 7)
 
 ### Out of Scope
 
