@@ -24,18 +24,19 @@
 - ✓ 工具权限请求/响应流程
 - ✓ Token 用量追踪与上下文进度显示
 - ✓ 状态栏消息显示（系统消息、重试状态等）
+- ✓ 主题个性化 — 暗色/亮色/跟随系统三种主题 (Phase 5)
 
 ### Active
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] 修复发送消息后长时间无响应最终报 429 速率限制错误的问题
+- [ ] 知识管理 — 对话导出、剪贴板增强 (Phase 6)
 
 ### Out of Scope
 
 <!-- Explicit boundaries. Includes reasoning to prevent re-adding. -->
 
-- 新功能开发 — 当前只聚焦修复 bug
+- 新功能开发 — 已扩展为 UX 增强项目，不再仅限 bug 修复
 - 跨平台适配 — 仅关注 Windows
 - 官方 Anthropic API 支持 — 当前使用智谱 AI 代理
 
@@ -89,4 +90,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-24 after initialization*
+*Last updated: 2026-04-26 after Phase 5 completion*
