@@ -4,6 +4,7 @@ import { useExtensionStore } from '../stores/extension'
 import { useSettingsStore } from '../stores/settings'
 import ConfirmDialog from './ConfirmDialog.vue'
 import ContextMenu, { type MenuItem } from './ContextMenu.vue'
+import ClipboardPanel from './ClipboardPanel.vue'
 import type { SessionInfo } from '../../../shared/types'
 
 interface SessionTab {
@@ -43,6 +44,9 @@ const contextMenuTabId = ref<string | null>(null)
 const contextMenuItems: MenuItem[] = [
   { label: '导出对话', action: 'export', icon: '\u{1F4C4}' }
 ]
+
+// 剪贴板面板状态
+const clipboardPanelVisible = ref(false)
 
 /**
  * 显示确认对话框
@@ -764,8 +768,21 @@ defineExpose({
   switchToNextTab,
   switchToPrevTab,
   hasActiveChannels,
-  activeTabId
+  activeTabId,
+  toggleClipboardPanel
 })
+
+/** 切换剪贴板面板 */
+function toggleClipboardPanel(): void {
+  clipboardPanelVisible.value = !clipboardPanelVisible.value
+}
+
+/** 剪贴板面板选中处理 */
+async function handleClipboardSelect(text: string): Promise<void> {
+  clipboardPanelVisible.value = false
+  // 文本已通过 useClipboard().pasteText 写入剪贴板
+  showStatus('已复制到剪贴板', 'success', 2000)
+}
 </script>
 
 <template>
@@ -924,6 +941,13 @@ defineExpose({
         :items="contextMenuItems"
         @select="handleContextMenuAction"
         @close="contextMenuVisible = false"
+      />
+
+      <!-- 剪贴板面板 (UX-08) -->
+      <ClipboardPanel
+        :visible="clipboardPanelVisible"
+        @close="clipboardPanelVisible = false"
+        @select="handleClipboardSelect"
       />
     </div>
   </div>

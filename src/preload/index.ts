@@ -103,7 +103,7 @@ const api = {
     const channels = [
       'shortcut:new-tab', 'shortcut:close-tab', 'shortcut:toggle-sidebar',
       'shortcut:next-tab', 'shortcut:prev-tab', 'shortcut:open-settings',
-      'shortcut:reset-zoom'
+      'shortcut:reset-zoom', 'shortcut:clipboard-panel'
     ]
     const unsubscribers = channels.map((ch) => {
       const fn = (): void => callback(ch.replace('shortcut:', ''))

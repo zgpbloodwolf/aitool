@@ -86,6 +86,12 @@ function createWindow(): BrowserWindow {
   // D-05: 在主进程拦截快捷键，解决 iframe 获取焦点后渲染进程收不到键盘事件的问题
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if (!input.control && !input.meta) return
+    // D-12: Ctrl+Shift+V — 剪贴板面板
+    if (input.control && input.shift && input.key.toLowerCase() === 'v') {
+      event.preventDefault()
+      mainWindow.webContents.send('shortcut:clipboard-panel')
+      return
+    }
     const shortcuts: Record<string, string> = {
       'n': 'shortcut:new-tab',
       'w': 'shortcut:close-tab',

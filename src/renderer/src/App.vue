@@ -138,6 +138,9 @@ function handleShortcut(action: string): void {
     case 'reset-zoom':
       resetZoom()
       break
+    case 'clipboard-panel':
+      chatPanelRef.value?.toggleClipboardPanel()
+      break
   }
 }
 
