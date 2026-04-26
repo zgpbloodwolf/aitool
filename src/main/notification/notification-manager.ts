@@ -120,37 +120,39 @@ export class NotificationManager {
 
   /**
    * 从渲染进程读取通知设置，检查对应事件类型是否允许通知
-   * 设置存储在 localStorage，主进程通过 executeJavaScript 读取
+   * 优先从 localStorage 读取（通过 executeJavaScript），失败则从文件读取
    */
   private async isNotificationEnabled(type: string): Promise<boolean> {
     try {
-      const enabled = await this.mainWindow.webContents.executeJavaScript(
+      const result = await this.mainWindow.webContents.executeJavaScript(
         `(() => {
           try {
             const raw = localStorage.getItem('aitools-settings');
-            if (!raw) return true; // 无设置 → 默认显示
-            const settings = JSON.parse(raw);
-            if (!settings.notifyEnabled) return false; // 全局通知开关
-            const toggleMap = {
-              complete: settings.notifyComplete,
-              permission: settings.notifyPermission,
-              plan: settings.notifyPlan,
-              reply: settings.notifyReply,
-              error: settings.notifyError
+            if (!raw) return true;
+            const s = JSON.parse(raw);
+            if (s.notifyEnabled === false) return false;
+            const map = {
+              complete: s.notifyComplete,
+              permission: s.notifyPermission,
+              plan: s.notifyPlan,
+              reply: s.notifyReply,
+              error: s.notifyError
             };
-            return toggleMap['${type}'] !== false;
+            const val = map['${type}'];
+            return val !== false && val !== undefined;
           } catch { return true; }
         })()`
       )
-      return enabled !== false
+      return result !== false
     } catch {
-      return true // 查询失败 → 默认显示
+      return true
     }
   }
 
   async show(options: ShowNotificationOptions): Promise<void> {
     // 检查通知设置开关
     const enabled = await this.isNotificationEnabled(options.type)
+    console.log(`[Notification] type=${options.type} enabled=${enabled}`)
     if (!enabled) return
 
     // D-03: 窗口在前台且对应标签页可见时不弹通知，但仍播放声音
