@@ -7,6 +7,7 @@ import { registerExtensionHandlers } from './ipc/extensions'
 import { registerClaudeWebviewHandlers, shutdownClaude } from './ipc/claude-webview'
 import { registerFileWatcherHandlers, stopAllWatchers } from './ipc/file-watcher'
 import { stopWebviewServer } from './claude/webview-server'
+import { setupTray, registerTrayHandlers } from './tray/tray-manager'
 
 // 设置 Windows 控制台代码页为 UTF-8，防止中文日志乱码
 if (process.platform === 'win32') {
@@ -123,7 +124,9 @@ app.whenReady().then(() => {
   registerClaudeWebviewHandlers()
   registerFileWatcherHandlers()
 
-  createWindow()
+  const mainWindow = createWindow()
+  setupTray(mainWindow)
+  registerTrayHandlers()
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

@@ -44,6 +44,8 @@ declare global {
       ) => () => void
       onProcessUnresponsive: (callback: (data: { channelId: string }) => void) => () => void
       onShortcut: (callback: (action: string) => void) => () => void
+      updateCloseBehavior: (behavior: 'minimize' | 'quit' | 'ask') => void
+      onCloseBehaviorChanged: (callback: (behavior: string) => void) => () => void
     }
   }
 }

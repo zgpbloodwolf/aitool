@@ -110,6 +110,15 @@ const api = {
       return () => ipcRenderer.removeListener(ch, fn)
     })
     return () => unsubscribers.forEach((u) => u())
+  },
+  // D-11: 关闭行为 IPC — 设置面板同步关闭行为偏好到主进程
+  updateCloseBehavior: (behavior: 'minimize' | 'quit' | 'ask'): void =>
+    ipcRenderer.send('settings:update-close-behavior', behavior),
+  onCloseBehaviorChanged: (callback: (behavior: string) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, behavior: string): void =>
+      callback(behavior)
+    ipcRenderer.on('settings:close-behavior-changed', handler)
+    return () => ipcRenderer.removeListener('settings:close-behavior-changed', handler)
   }
 }
 
