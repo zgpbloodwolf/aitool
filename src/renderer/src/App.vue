@@ -167,7 +167,12 @@ onMounted(() => {
   // 通知跳转标签页 — 从 useNotification 通过 CustomEvent 传递
   window.addEventListener('notification:focus-tab', ((e: CustomEvent) => {
     const channelId = e.detail as string
-    chatPanelRef.value?.switchTab(channelId)
+    // channelId 需要映射到 tabId
+    const channelToTab = (window as any).__channelToTab as Map<string, string> | undefined
+    const tabId = channelToTab?.get(channelId)
+    if (tabId) {
+      chatPanelRef.value?.switchTab(tabId)
+    }
   }) as EventListener)
 })
 
