@@ -138,7 +138,10 @@ function showTabContextMenu(event: MouseEvent, tabId: string): void {
 /** 右键菜单动作处理 */
 function handleContextMenuAction(action: string): void {
   if (action === 'export' && contextMenuTabId.value) {
-    exportCurrentChat(contextMenuTabId.value)
+    exportCurrentChat(contextMenuTabId.value).catch((e) => {
+      console.error('[导出失败]', e)
+      showStatus('导出失败: ' + String(e), 'error')
+    })
   }
   contextMenuVisible.value = false
 }

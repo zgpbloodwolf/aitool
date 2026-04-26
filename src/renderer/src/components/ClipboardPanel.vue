@@ -24,6 +24,7 @@ const activeTab = ref<'history' | 'snippets'>('history')
 const selectedIndex = ref(0)
 const searchQuery = ref('')
 const listRef = ref<HTMLElement | null>(null)
+const searchInputRef = ref<HTMLInputElement | null>(null)
 
 // 编辑片段对话框
 const editingSnippet = ref<Snippet | null>(null)
@@ -65,8 +66,7 @@ watch(
       await readAndRecord()
       await nextTick()
       // 聚焦搜索输入框
-      const input = listRef.value?.querySelector('.clipboard-search-input') as HTMLInputElement
-      input?.focus()
+      searchInputRef.value?.focus()
     }
   }
 )
@@ -195,7 +195,7 @@ function formatTimestamp(ts: number): string {
         <div class="clipboard-panel" @keydown="handleKeydown">
           <!-- 搜索框 -->
           <div class="clipboard-search">
-            <input v-model="searchQuery" class="clipboard-search-input" placeholder="搜索..." />
+            <input ref="searchInputRef" v-model="searchQuery" class="clipboard-search-input" placeholder="搜索..." @keydown="handleKeydown" />
           </div>
 
           <!-- Tab 切换 (D-14) -->
@@ -203,20 +203,14 @@ function formatTimestamp(ts: number): string {
             <button
               class="clipboard-tab"
               :class="{ active: activeTab === 'history' }"
-              @click="
-                activeTab = 'history'
-                selectedIndex = 0
-              "
+              @click="() => { activeTab = 'history'; selectedIndex = 0 }"
             >
               历史
             </button>
             <button
               class="clipboard-tab"
               :class="{ active: activeTab === 'snippets' }"
-              @click="
-                activeTab = 'snippets'
-                selectedIndex = 0
-              "
+              @click="() => { activeTab = 'snippets'; selectedIndex = 0 }"
             >
               收藏
             </button>
@@ -299,10 +293,7 @@ function formatTimestamp(ts: number): string {
           <div
             v-if="showEditDialog || showCreateDialog"
             class="snippet-dialog-overlay"
-            @click.self="
-              showEditDialog = false
-              showCreateDialog = false
-            "
+            @click.self="() => { showEditDialog = false; showCreateDialog = false }"
           >
             <div class="snippet-dialog">
               <div class="snippet-dialog-title">
@@ -318,10 +309,7 @@ function formatTimestamp(ts: number): string {
               <div class="snippet-dialog-actions">
                 <button
                   class="snippet-dialog-btn cancel"
-                  @click="
-                    showEditDialog = false
-                    showCreateDialog = false
-                  "
+                  @click="() => { showEditDialog = false; showCreateDialog = false }"
                 >
                   取消
                 </button>
