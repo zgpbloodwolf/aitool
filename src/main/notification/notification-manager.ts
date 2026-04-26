@@ -51,16 +51,11 @@ export class NotificationManager {
       if (!entry) return
 
       switch (data.action) {
-        case 'allow':
-        case 'deny':
-          // 转发权限响应到渲染进程（由 ChatPanel 处理）
-          this.mainWindow.webContents.send('notification:permission-response', {
-            allowed: data.action === 'allow'
-          })
-          break
         case 'click':
         case 'view':
         case 'reply':
+        case 'allow':
+        case 'deny':
           // 先恢复主窗口
           this.mainWindow.show()
           this.mainWindow.focus()
