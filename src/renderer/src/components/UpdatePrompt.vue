@@ -170,7 +170,7 @@ function formatReleaseNotes(
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--dialog-backdrop);
   z-index: 100;
   display: flex;
   align-items: center;
@@ -204,8 +204,8 @@ function formatReleaseNotes(
 
 /* 错误提示 */
 .update-error {
-  background: rgba(243, 139, 168, 0.1);
-  border: 1px solid rgba(243, 139, 168, 0.3);
+  background: var(--error-bg-subtle);
+  border: 1px solid var(--error-border-subtle);
   border-radius: 6px;
   padding: 12px;
   margin-bottom: 16px;
@@ -244,8 +244,8 @@ function formatReleaseNotes(
 
 /* 下载完成提示 */
 .update-complete {
-  background: rgba(166, 227, 161, 0.1);
-  border: 1px solid rgba(166, 227, 161, 0.3);
+  background: var(--success-bg-subtle);
+  border: 1px solid var(--success-border-subtle);
   border-radius: 6px;
   padding: 12px;
   margin-bottom: 16px;

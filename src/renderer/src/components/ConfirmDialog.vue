@@ -52,7 +52,7 @@ function handleCancel(): void {
 .dialog-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--dialog-backdrop);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -124,11 +124,11 @@ function handleCancel(): void {
 }
 
 .btn-confirm.danger:hover {
-  background: #eba0ac;
+  background: var(--error-hover);
 }
 
 .btn-confirm.warning:hover {
-  background: #ffcba0;
+  background: var(--warning-hover);
 }
 
 .btn-confirm.info:hover {

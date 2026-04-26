@@ -249,7 +249,7 @@ function updateCloseBehavior(value: CloseBehavior): void {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--overlay-backdrop);
   z-index: 100;
   display: flex;
   justify-content: flex-end;
@@ -264,7 +264,7 @@ function updateCloseBehavior(value: CloseBehavior): void {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.3);
+  box-shadow: -4px 0 16px var(--shadow-color);
 }
 
 /* 头部 */
