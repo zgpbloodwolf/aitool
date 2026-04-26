@@ -155,6 +155,14 @@ Plans:
 - 收藏功能: 用户可将常用内容收藏为片段，快速重复使用
 - 输入框右键或快捷键唤起
 
+**Plans**: 4 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — 导出后端 IPC 管线 (dialog:showSaveDialog + claude:export-session + Markdown 格式化)
+- [ ] 06-02-PLAN.md — 剪贴板数据层 (clipboard store + snippet store + useClipboard composable)
+- [ ] 06-03-PLAN.md — 对话导出前端 (ContextMenu 组件 + 标签右键菜单 + 导出触发)
+- [ ] 06-04-PLAN.md — 剪贴板面板 UI (ClipboardPanel 组件 + 快捷键注册 + ChatPanel 集成)
+
 **Success Criteria**:
   1. 任意会话可导出为完整 Markdown 文件
   2. 剪贴板历史记录可唤起并快速插入
@@ -239,7 +247,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 3. UX Enhancement | 6/6 | Complete | 2026-04-25 |
 | 4. Quick Wins | 5/5 | Complete | 2026-04-26 |
 | 5. 主题个性化 | 3/3 | Complete | 2026-04-26 |
-| 6. 知识管理 | 0/- | Not started | - |
+| 6. 知识管理 | 0/4 | Not started | - |
 | 7. 工作流增强 | 0/- | Not started | - |
 | 8. 高级特性 | 0/- | Not started | - |
 | 9. 远程访问 | 0/- | Not started | - |
