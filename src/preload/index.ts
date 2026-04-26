@@ -138,6 +138,17 @@ const api = {
     return () => ipcRenderer.removeListener('notification:play-sound', handler)
   },
 
+  // 主题 IPC — 主进程系统主题变化通知渲染进程 (05-01)
+  onThemeSystemChanged: (callback: (resolvedTheme: 'dark' | 'light') => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, theme: string): void =>
+      callback(theme as 'dark' | 'light')
+    ipcRenderer.on('theme:system-changed', handler)
+    return () => ipcRenderer.removeListener('theme:system-changed', handler)
+  },
+  // 主题 IPC — 渲染进程通知主进程主题变更 (05-01)
+  updateTheme: (mode: 'dark' | 'light' | 'system', resolved?: 'dark' | 'light'): void =>
+    ipcRenderer.send('theme:update', mode, resolved),
+
   // 标签激活通知 — 用户切换标签时关闭对应对话的通知
   send: (channel: string, ...args: unknown[]): void => ipcRenderer.send(channel, ...args),
 

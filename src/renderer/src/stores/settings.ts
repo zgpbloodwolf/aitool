@@ -10,6 +10,14 @@ import { ref, computed, watch } from 'vue'
 export type CloseBehavior = 'minimize' | 'quit' | 'ask'
 
 /**
+ * 主题模式类型 (05-01)
+ * - dark: 暗色主题（Catppuccin Mocha）
+ * - light: 亮色主题（Catppuccin Latte）
+ * - system: 跟随系统明暗设置
+ */
+export type ThemeMode = 'dark' | 'light' | 'system'
+
+/**
  * 设置状态接口 — 所有用户偏好配置项
  */
 export interface SettingsState {
@@ -36,6 +44,9 @@ export interface SettingsState {
 
   // 托盘行为 (D-11)
   closeBehavior: CloseBehavior // 关闭窗口行为，默认 'ask'
+
+  // 主题 (05-01)
+  theme: ThemeMode // 主题模式，默认 'dark'
 }
 
 /** localStorage 存储键名 */
@@ -60,7 +71,9 @@ const DEFAULTS: SettingsState = {
 
   skippedVersion: null,
 
-  closeBehavior: 'ask'
+  closeBehavior: 'ask',
+
+  theme: 'dark' as ThemeMode
 }
 
 /**
@@ -94,6 +107,8 @@ export const useSettingsStore = defineStore('settings', () => {
 
   const closeBehavior = ref<CloseBehavior>(initial.closeBehavior)
 
+  const theme = ref<ThemeMode>(initial.theme)
+
   // 将所有 ref 聚合为一个响应式对象，用于 watch deep
   const settings = ref<SettingsState>({
     soundEnabled: initial.soundEnabled,
@@ -109,7 +124,8 @@ export const useSettingsStore = defineStore('settings', () => {
     notifyReply: initial.notifyReply,
     notifyError: initial.notifyError,
     skippedVersion: initial.skippedVersion,
-    closeBehavior: initial.closeBehavior
+    closeBehavior: initial.closeBehavior,
+    theme: initial.theme
   })
 
   // 深度监听：settings 变更自动写入 localStorage
@@ -134,6 +150,9 @@ export const useSettingsStore = defineStore('settings', () => {
 
   /** 当前关闭行为 */
   const currentCloseBehavior = computed(() => settings.value.closeBehavior)
+
+  /** 当前主题模式 */
+  const currentTheme = computed(() => settings.value.theme)
 
   // ---- 操作方法 ----
 
@@ -171,6 +190,7 @@ export const useSettingsStore = defineStore('settings', () => {
     isNotifyEnabled,
     currentZoomFactor,
     currentCloseBehavior,
+    currentTheme,
     // 操作方法
     update,
     resetZoom,
