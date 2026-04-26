@@ -3,6 +3,7 @@ import { ref, reactive, onMounted, onBeforeUnmount, watch, computed, nextTick } 
 import { useExtensionStore } from '../stores/extension'
 import { useSettingsStore } from '../stores/settings'
 import ConfirmDialog from './ConfirmDialog.vue'
+import ContextMenu, { type MenuItem } from './ContextMenu.vue'
 import type { SessionInfo } from '../../../shared/types'
 
 interface SessionTab {
@@ -33,6 +34,15 @@ const confirmTitle = ref('')
 const confirmMessage = ref('')
 const confirmType = ref<'danger' | 'warning' | 'info'>('info')
 const pendingAction = ref<(() => void) | null>(null)
+
+// D-11: 标签右键菜单状态
+const contextMenuVisible = ref(false)
+const contextMenuX = ref(0)
+const contextMenuY = ref(0)
+const contextMenuTabId = ref<string | null>(null)
+const contextMenuItems: MenuItem[] = [
+  { label: '导出对话', action: 'export', icon: '\u{1F4C4}' }
+]
 
 /**
  * 显示确认对话框
@@ -109,6 +119,67 @@ function clearStatus(): void {
   if (statusTimer) {
     clearTimeout(statusTimer)
     statusTimer = null
+  }
+}
+
+/** D-11: 标签右键菜单 */
+function showTabContextMenu(event: MouseEvent, tabId: string): void {
+  event.preventDefault()
+  contextMenuTabId.value = tabId
+  contextMenuX.value = event.clientX
+  contextMenuY.value = event.clientY
+  contextMenuVisible.value = true
+}
+
+/** 右键菜单动作处理 */
+function handleContextMenuAction(action: string): void {
+  if (action === 'export' && contextMenuTabId.value) {
+    exportCurrentChat(contextMenuTabId.value)
+  }
+  contextMenuVisible.value = false
+}
+
+/** D-11: 导出当前标签的对话为 Markdown 文件 */
+async function exportCurrentChat(tabId: string): Promise<void> {
+  // 查找 tabId 对应的 channelId
+  let channelId: string | null = null
+  for (const [chId, tId] of channelToTab) {
+    if (tId === tabId) { channelId = chId; break }
+  }
+  if (!channelId) {
+    showStatus('无法定位当前频道', 'error')
+    return
+  }
+
+  // 获取 sessionId
+  const sessionId = await window.api.getActiveSessionId(channelId)
+  if (!sessionId) {
+    showStatus('当前无活跃会话，无法导出', 'warning')
+    return
+  }
+
+  // 获取标签标题
+  const tab = tabs.value.find(t => t.id === tabId)
+  const title = tab?.label || '对话'
+  const date = new Date().toISOString().split('T')[0]
+  // D-04: 默认文件名为「会话标题+日期」
+  const defaultName = `${title}-${date}.md`
+
+  // 弹出保存对话框
+  const dialogResult = await window.api.showSaveDialog({
+    title: '导出对话',
+    defaultPath: defaultName
+  })
+  if (dialogResult.canceled || !dialogResult.filePath) return
+
+  showStatus('正在导出对话...', 'info')
+
+  // 调用导出 IPC
+  const result = await window.api.exportSession(sessionId, title, dialogResult.filePath)
+  if (result.success) {
+    showStatus('对话已导出', 'success', 3000)
+  } else {
+    showStatus('导出失败: ' + (result.error || '未知错误'), 'error')
   }
 }
 
@@ -734,6 +805,7 @@ defineExpose({
             draggable="true"
             @click="switchTab(tab.id)"
             @mousedown.middle.prevent="closeTab(tab.id)"
+            @contextmenu.prevent="showTabContextMenu($event, tab.id)"
             @dragstart="onDragStart($event, tab.id)"
             @dragover.prevent="onDragOver($event)"
             @dragenter.prevent="onDragEnter(tab.id)"
@@ -842,6 +914,16 @@ defineExpose({
         :type="confirmType"
         @confirm="handleConfirm"
         @cancel="handleCancel"
+      />
+
+      <!-- 标签右键菜单 (UX-07) -->
+      <ContextMenu
+        :visible="contextMenuVisible"
+        :x="contextMenuX"
+        :y="contextMenuY"
+        :items="contextMenuItems"
+        @select="handleContextMenuAction"
+        @close="contextMenuVisible = false"
       />
     </div>
   </div>
