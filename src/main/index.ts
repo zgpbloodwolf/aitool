@@ -8,6 +8,8 @@ import { registerClaudeWebviewHandlers, shutdownClaude } from './ipc/claude-webv
 import { registerFileWatcherHandlers, stopAllWatchers } from './ipc/file-watcher'
 import { stopWebviewServer } from './claude/webview-server'
 import { setupTray, registerTrayHandlers } from './tray/tray-manager'
+import { NotificationManager } from './notification/notification-manager'
+import { setNotificationManager } from './notification/notification-registry'
 
 // 设置 Windows 控制台代码页为 UTF-8，防止中文日志乱码
 if (process.platform === 'win32') {
@@ -128,6 +130,10 @@ app.whenReady().then(() => {
   const mainWindow = createWindow()
   setupTray(mainWindow)
   registerTrayHandlers()
+
+  // 通知管理器初始化
+  const notifMgr = new NotificationManager(mainWindow)
+  setNotificationManager(notifMgr)
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

@@ -9,6 +9,7 @@ import { safeLog, safeError } from '../claude/logger'
 import { listSessions, getSessionMessages, deleteSession } from '../claude/session-store'
 import { discoverSkills, runClaudeCliCommand } from '../claude/plugin-manager'
 import { handleGetMcpServers, handleMcpServerCommand } from '../claude/mcp-manager'
+import { notificationManager } from '../notification/notification-registry'
 
 interface PendingToolUse {
   id: string
@@ -263,6 +264,16 @@ async function handleLaunchClaude(
       return
     }
     sendToWebview(tagged)
+
+    // 通知触发：回复完成
+    if (msg.type === 'result' && notificationManager) {
+      notificationManager.show({
+        type: 'complete',
+        title: '回复完成',
+        body: 'Claude 已完成回复',
+        channelId
+      })
+    }
   })
 
   proc.on('exit', (code) => {
@@ -286,6 +297,15 @@ async function handleLaunchClaude(
 
   proc.on('error', (err) => {
     safeError('[ClaudeIPC] 进程错误 [' + channelId + ']:', err)
+    // 通知触发：进程错误
+    if (notificationManager) {
+      notificationManager.show({
+        type: 'error',
+        title: '进程错误',
+        body: String(err).slice(0, 100),
+        channelId
+      })
+    }
     channels.delete(channelId)
     sendToWebview({ type: 'close_channel', channelId, error: String(err) })
   })
@@ -407,6 +427,18 @@ function sendToolPermissionRequest(
       suggestions: []
     }
   })
+
+  // 通知触发：工具权限请求
+  if (notificationManager) {
+    notificationManager.show({
+      type: 'permission',
+      title: '工具权限请求',
+      body: `Claude 请求使用工具: ${toolName}`,
+      channelId,
+      requestId,
+      toolName
+    })
+  }
 
   promise.then((response) => {
     clearTimeout(resolver.timeoutId)

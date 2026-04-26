@@ -46,6 +46,9 @@ declare global {
       onShortcut: (callback: (action: string) => void) => () => void
       updateCloseBehavior: (behavior: 'minimize' | 'quit' | 'ask') => void
       onCloseBehaviorChanged: (callback: (behavior: string) => void) => () => void
+      notificationAction: (notificationId: string, action: string, replyText?: string) => void
+      onNotificationFocusTab: (callback: (channelId: string) => void) => () => void
+      onNotificationPlaySound: (callback: (type: string) => void) => () => void
     }
   }
 }

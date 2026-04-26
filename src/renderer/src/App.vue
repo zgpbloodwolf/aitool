@@ -4,6 +4,7 @@ import { useExtensionStore } from './stores/extension'
 import { useWorkspaceStore } from './stores/workspace'
 import { useSettingsStore } from './stores/settings'
 import { loadAndApplyZoom, resetZoom, applyZoom } from './composables/useZoom'
+import { useNotification } from './composables/useNotification'
 import TitleBar from './components/TitleBar.vue'
 import Sidebar from './components/Sidebar.vue'
 import ChatPanel from './components/ChatPanel.vue'
@@ -158,6 +159,15 @@ onMounted(() => {
   watch(() => settingsStore.settings.zoomFactor, (newFactor) => {
     applyZoom(newFactor)
   })
+
+  // 通知系统初始化
+  useNotification()
+
+  // 通知跳转标签页 — 从 useNotification 通过 CustomEvent 传递
+  window.addEventListener('notification:focus-tab', ((e: CustomEvent) => {
+    const channelId = e.detail as string
+    chatPanelRef.value?.switchTab(channelId)
+  }) as EventListener)
 })
 
 onBeforeUnmount(() => {

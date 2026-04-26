@@ -553,6 +553,13 @@ watch(
   }
 )
 
+// D-03: 暴露 channelToTab 和 activeTabId 到 window 上
+// 供主进程通过 executeJavaScript 查询标签页可见性
+;(window as any).__channelToTab = channelToTab
+watch(activeTabId, (newId) => {
+  ;(window as any).__activeTabId = newId
+}, { immediate: true })
+
 /** 切换到下一个标签（循环） */
 function switchToNextTab(): void {
   if (tabs.value.length <= 1) return

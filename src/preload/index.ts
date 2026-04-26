@@ -120,6 +120,22 @@ const api = {
       callback(behavior)
     ipcRenderer.on('settings:close-behavior-changed', handler)
     return () => ipcRenderer.removeListener('settings:close-behavior-changed', handler)
+  },
+
+  // 通知系统 IPC
+  notificationAction: (notificationId: string, action: string, replyText?: string): void =>
+    ipcRenderer.send('notification:action', { notificationId, action, replyText }),
+  onNotificationFocusTab: (callback: (channelId: string) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, channelId: string): void =>
+      callback(channelId)
+    ipcRenderer.on('notification:focus-tab', handler)
+    return () => ipcRenderer.removeListener('notification:focus-tab', handler)
+  },
+  onNotificationPlaySound: (callback: (type: string) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, type: string): void =>
+      callback(type)
+    ipcRenderer.on('notification:play-sound', handler)
+    return () => ipcRenderer.removeListener('notification:play-sound', handler)
   }
 }
 
