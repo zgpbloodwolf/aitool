@@ -188,7 +188,7 @@ export class NotificationManager {
       show: false,
       webPreferences: {
         preload: join(__dirname, '../preload/index.js'),
-        contextIsolation: true,
+        contextIsolation: false,
         sandbox: false
       }
     })
