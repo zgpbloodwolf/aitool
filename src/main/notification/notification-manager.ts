@@ -108,7 +108,41 @@ export class NotificationManager {
     return false
   }
 
+  /**
+   * 从渲染进程读取通知设置，检查对应事件类型是否允许通知
+   * 设置存储在 localStorage，主进程通过 executeJavaScript 读取
+   */
+  private async isNotificationEnabled(type: string): Promise<boolean> {
+    try {
+      const enabled = await this.mainWindow.webContents.executeJavaScript(
+        `(() => {
+          try {
+            const raw = localStorage.getItem('aitools-settings');
+            if (!raw) return true; // 无设置 → 默认显示
+            const settings = JSON.parse(raw);
+            if (!settings.notifyEnabled) return false; // 全局通知开关
+            const toggleMap = {
+              complete: settings.notifyComplete,
+              permission: settings.notifyPermission,
+              plan: settings.notifyPlan,
+              reply: settings.notifyReply,
+              error: settings.notifyError
+            };
+            return toggleMap['${type}'] !== false;
+          } catch { return true; }
+        })()`
+      )
+      return enabled !== false
+    } catch {
+      return true // 查询失败 → 默认显示
+    }
+  }
+
   async show(options: ShowNotificationOptions): Promise<void> {
+    // 检查通知设置开关
+    const enabled = await this.isNotificationEnabled(options.type)
+    if (!enabled) return
+
     // D-03: 窗口在前台且对应标签页可见时不弹通知，但仍播放声音
     const shouldShow = await this.shouldShowNotification(options.channelId)
     if (!shouldShow) {
