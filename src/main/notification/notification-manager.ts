@@ -28,7 +28,7 @@ interface ShowNotificationOptions {
 const MAX_NOTIFICATIONS = 3
 const NOTIFICATION_WIDTH = 360
 const MARGIN = 10
-const DEFAULT_TIMEOUT = 5000
+const DEFAULT_TIMEOUT = 15000
 
 const activeNotifications: NotificationEntry[] = []
 
