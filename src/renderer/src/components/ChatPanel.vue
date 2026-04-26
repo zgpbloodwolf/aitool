@@ -915,8 +915,8 @@ defineExpose({
   align-items: center;
   height: 32px;
   min-height: 32px;
-  background: #181825;
-  border-bottom: 1px solid #313244;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--bg-tertiary);
   padding: 0 4px;
   user-select: none;
 }
@@ -940,7 +940,7 @@ defineExpose({
   height: 28px;
   border-radius: 4px 4px 0 0;
   background: transparent;
-  color: #a6adc8;
+  color: var(--text-secondary);
   font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
@@ -948,14 +948,14 @@ defineExpose({
 }
 
 .tab-item:hover {
-  background: #1e1e2e;
-  color: #cdd6f4;
+  background: var(--bg-primary);
+  color: var(--text-primary);
 }
 
 .tab-item.active {
-  background: #1e1e2e;
-  color: #cdd6f4;
-  border-bottom: 2px solid #89b4fa;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border-bottom: 2px solid var(--accent);
 }
 
 /* D-16: 拖拽排序样式 */
@@ -1003,7 +1003,7 @@ defineExpose({
 
 .tab-close:hover {
   opacity: 1;
-  color: #f38ba8;
+  color: var(--error);
 }
 
 .tab-add {
@@ -1014,7 +1014,7 @@ defineExpose({
   height: 28px;
   border: none;
   background: transparent;
-  color: #a6adc8;
+  color: var(--text-secondary);
   font-size: 18px;
   cursor: pointer;
   border-radius: 4px;
@@ -1029,7 +1029,7 @@ defineExpose({
   height: 28px;
   border: none;
   background: transparent;
-  color: #a6adc8;
+  color: var(--text-secondary);
   font-size: 14px;
   cursor: pointer;
   border-radius: 4px;
@@ -1037,18 +1037,18 @@ defineExpose({
 }
 
 .tab-history:hover {
-  background: #1e1e2e;
-  color: #cdd6f4;
+  background: var(--bg-primary);
+  color: var(--text-primary);
 }
 
 .tab-history.active {
-  background: #313244;
-  color: #89b4fa;
+  background: var(--bg-tertiary);
+  color: var(--accent);
 }
 
 .tab-add:hover {
-  background: #1e1e2e;
-  color: #cdd6f4;
+  background: var(--bg-primary);
+  color: var(--text-primary);
 }
 
 /* Iframe Container */
@@ -1065,7 +1065,7 @@ defineExpose({
   width: 100%;
   height: 100%;
   border: none;
-  background: #1e1e2e;
+  background: var(--bg-primary);
 }
 
 .webview-iframe.hidden {
@@ -1084,14 +1084,14 @@ defineExpose({
   align-items: center;
   gap: 16px;
   padding: 32px 48px;
-  background: rgba(24, 24, 37, 0.95);
-  border: 1px solid #313244;
+  background: var(--bg-overlay);
+  border: 1px solid var(--bg-tertiary);
   border-radius: 8px;
   z-index: 15;
 }
 
 .unresponsive-text {
-  color: #f38ba8;
+  color: var(--error);
   font-size: 15px;
   font-weight: 600;
   margin: 0;
@@ -1113,21 +1113,21 @@ defineExpose({
 }
 
 .status-overlay.info {
-  background: rgba(137, 180, 250, 0.15);
-  color: #89b4fa;
-  border-top: 1px solid rgba(137, 180, 250, 0.3);
+  background: var(--status-info-bg);
+  color: var(--status-info-text);
+  border-top: 1px solid var(--status-info-border);
 }
 
 .status-overlay.warning {
-  background: rgba(249, 226, 175, 0.15);
-  color: #f9e2af;
-  border-top: 1px solid rgba(249, 226, 175, 0.3);
+  background: var(--status-warning-bg);
+  color: var(--status-warning-text);
+  border-top: 1px solid var(--status-warning-border);
 }
 
 .status-overlay.error {
-  background: rgba(243, 139, 168, 0.15);
-  color: #f38ba8;
-  border-top: 1px solid rgba(243, 139, 168, 0.3);
+  background: var(--status-error-bg);
+  color: var(--status-error-text);
+  border-top: 1px solid var(--status-error-border);
 }
 
 .status-dot {
@@ -1139,13 +1139,13 @@ defineExpose({
 }
 
 .info .status-dot {
-  background: #89b4fa;
+  background: var(--accent);
 }
 .warning .status-dot {
-  background: #f9e2af;
+  background: var(--warning-bright);
 }
 .error .status-dot {
-  background: #f38ba8;
+  background: var(--error);
 }
 
 @keyframes pulse {
@@ -1181,7 +1181,7 @@ defineExpose({
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--overlay-backdrop);
   z-index: 20;
   display: flex;
   justify-content: flex-end;
@@ -1190,8 +1190,8 @@ defineExpose({
 .session-history-panel {
   width: 360px;
   max-width: 100%;
-  background: #181825;
-  border-left: 1px solid #313244;
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--bg-tertiary);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1202,20 +1202,20 @@ defineExpose({
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  border-bottom: 1px solid #313244;
+  border-bottom: 1px solid var(--bg-tertiary);
   flex-shrink: 0;
 }
 
 .session-title {
   font-size: 14px;
   font-weight: 600;
-  color: #cdd6f4;
+  color: var(--text-primary);
 }
 
 .session-close {
   background: none;
   border: none;
-  color: #6c7086;
+  color: var(--text-muted);
   font-size: 20px;
   cursor: pointer;
   padding: 0 4px;
@@ -1223,14 +1223,14 @@ defineExpose({
 }
 
 .session-close:hover {
-  color: #f38ba8;
+  color: var(--error);
 }
 
 .session-loading,
 .session-empty {
   padding: 32px 16px;
   text-align: center;
-  color: #6c7086;
+  color: var(--text-muted);
   font-size: 13px;
 }
 
@@ -1249,7 +1249,7 @@ defineExpose({
 }
 
 .session-list::-webkit-scrollbar-thumb {
-  background: #45475a;
+  background: var(--border);
   border-radius: 3px;
 }
 
@@ -1262,12 +1262,12 @@ defineExpose({
 }
 
 .session-item:hover {
-  background: #1e1e2e;
+  background: var(--bg-primary);
 }
 
 .session-summary {
   font-size: 13px;
-  color: #cdd6f4;
+  color: var(--text-primary);
   line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1281,15 +1281,15 @@ defineExpose({
   display: flex;
   gap: 8px;
   font-size: 11px;
-  color: #6c7086;
+  color: var(--text-muted);
   align-items: center;
 }
 
 .session-branch {
-  background: #313244;
+  background: var(--bg-tertiary);
   padding: 1px 6px;
   border-radius: 3px;
-  color: #a6adc8;
+  color: var(--text-secondary);
   font-family: monospace;
   max-width: 120px;
   overflow: hidden;
@@ -1301,7 +1301,7 @@ defineExpose({
   margin-left: auto;
   background: none;
   border: none;
-  color: #6c7086;
+  color: var(--text-muted);
   font-size: 12px;
   cursor: pointer;
   padding: 2px 4px;
@@ -1317,8 +1317,8 @@ defineExpose({
 }
 
 .session-delete:hover {
-  color: #f38ba8;
-  background: rgba(243, 139, 168, 0.1);
+  color: var(--error);
+  background: var(--delete-hover-bg);
 }
 
 .session-slide-enter-active,
