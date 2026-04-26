@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    /* 重置 + 透明背景（Windows 透明窗口需要 CSS 也设透明） */
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: transparent;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overflow: hidden;
+    }
+    .notif-card {
+      background: #1e1e2e;
+      border: 1px solid #45475a;
+      border-radius: 8px;
+      padding: 12px 16px;
+      color: #cdd6f4;
+      font-size: 13px;
+      animation: slideIn 0.25s ease;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    }
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    .notif-title { font-weight: 600; margin-bottom: 4px; font-size: 13px; }
+    .notif-body { color: #a6adc8; font-size: 12px; line-height: 1.4; }
+    .notif-actions { display: flex; gap: 8px; margin-top: 8px; }
+    .notif-btn {
+      padding: 4px 12px; border-radius: 4px; border: none; font-size: 12px; cursor: pointer;
+    }
+    .notif-btn-allow { background: #a6e3a1; color: #1e1e2e; }
+    .notif-btn-allow:hover { background: #94d991; }
+    .notif-btn-deny { background: #f38ba8; color: #1e1e2e; }
+    .notif-btn-deny:hover { background: #f07090; }
+    .notif-btn-view { background: #89b4fa; color: #1e1e2e; }
+    .notif-btn-view:hover { background: #74c7ec; }
+    .notif-btn-error { background: #45475a; color: #cdd6f4; }
+    .notif-btn-error:hover { background: #585b70; }
+    .notif-input {
+      width: 100%;
+      padding: 4px 8px;
+      border-radius: 4px;
+      border: 1px solid #45475a;
+      background: #181825;
+      color: #cdd6f4;
+      font-size: 12px;
+      margin-top: 8px;
+      box-sizing: border-box;
+      outline: none;
+    }
+    .notif-input:focus { border-color: #89b4fa; }
+  </style>
+</head>
+<body>
+  <div class="notif-card" id="card"></div>
+  <script>
+    var params = new URLSearchParams(window.location.search)
+    var id = params.get('id')
+    var type = params.get('type')
+    var title = params.get('title') || ''
+    var body = params.get('body') || ''
+    var toolName = params.get('toolName') || ''
+
+    var card = document.getElementById('card')
+
+    // 根据类型构建通知 UI（使用 textContent 防 XSS）
+    function escapeHtml(str) {
+      var div = document.createElement('div')
+      div.textContent = str
+      return div.innerHTML
+    }
+
+    var html = '<div class="notif-title">' + escapeHtml(title) + '</div>'
+    html += '<div class="notif-body">' + escapeHtml(body) + '</div>'
+
+    if (type === 'permission') {
+      html += '<div class="notif-actions">'
+        + '<button class="notif-btn notif-btn-allow" onclick="action(\'allow\')">允许</button>'
+        + '<button class="notif-btn notif-btn-deny" onclick="action(\'deny\')">拒绝</button>'
+        + '</div>'
+    } else if (type === 'plan') {
+      html += '<div class="notif-actions">'
+        + '<button class="notif-btn notif-btn-view" onclick="action(\'view\')">查看方案</button>'
+        + '</div>'
+    } else if (type === 'reply') {
+      html += '<input class="notif-input" id="replyInput" placeholder="输入回复..." />'
+      html += '<div class="notif-actions">'
+        + '<button class="notif-btn notif-btn-view" onclick="action(\'reply\')">发送</button>'
+        + '</div>'
+    } else if (type === 'error') {
+      html += '<div class="notif-actions">'
+        + '<button class="notif-btn notif-btn-error" onclick="action(\'click\')">查看详情</button>'
+        + '</div>'
+    } else {
+      // complete — 点击跳转到对应标签页
+      html += '<div class="notif-actions">'
+        + '<button class="notif-btn notif-btn-view" onclick="action(\'click\')">查看</button>'
+        + '</div>'
+    }
+
+    card.innerHTML = html
+
+    function action(act) {
+      var replyText = document.getElementById('replyInput')
+        ? document.getElementById('replyInput').value : undefined
+      if (window.api && window.api.notificationAction) {
+        window.api.notificationAction(id, act, replyText)
+      }
+      window.close()
+    }
+  </script>
+</body>
+</html>
