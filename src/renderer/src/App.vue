@@ -6,10 +6,12 @@ import TitleBar from './components/TitleBar.vue'
 import Sidebar from './components/Sidebar.vue'
 import ChatPanel from './components/ChatPanel.vue'
 import StatusBar from './components/StatusBar.vue'
+import SettingsDrawer from './components/SettingsDrawer.vue'
 
 const extStore = useExtensionStore()
 const workspaceStore = useWorkspaceStore()
 const sidebarVisible = ref(true)
+const settingsOpen = ref(false)
 
 // D-17: 侧边栏拖拽宽度 + 持久化
 const SIDEBAR_WIDTH_KEY = 'aitools-sidebar-width'
@@ -97,6 +99,13 @@ function handleGlobalKeydown(e: KeyboardEvent): void {
     sidebarVisible.value = !sidebarVisible.value
     return
   }
+
+  // Ctrl+,: 打开设置面板
+  if (e.ctrlKey && e.key === ',') {
+    e.preventDefault()
+    settingsOpen.value = !settingsOpen.value
+    return
+  }
 }
 
 /** D-05: 主进程 IPC 快捷键回调 — iframe 焦点时渲染进程 keydown 不触发，由主进程 before-input-event 拦截 */
@@ -118,6 +127,9 @@ function handleShortcut(action: string): void {
       break
     case 'prev-tab':
       chatPanelRef.value?.switchToPrevTab()
+      break
+    case 'open-settings':
+      settingsOpen.value = !settingsOpen.value
       break
   }
 }
@@ -143,7 +155,10 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="app-layout">
-    <TitleBar @toggle-sidebar="sidebarVisible = !sidebarVisible" />
+    <TitleBar
+      @toggle-sidebar="sidebarVisible = !sidebarVisible"
+      @open-settings="settingsOpen = !settingsOpen"
+    />
     <div class="main-content">
       <Sidebar
         v-if="sidebarVisible"
@@ -166,6 +181,8 @@ onBeforeUnmount(() => {
       </div>
     </div>
     <StatusBar />
+    <!-- 设置面板 — 覆盖在内容区上方 -->
+    <SettingsDrawer v-if="settingsOpen" @close="settingsOpen = false" />
   </div>
 </template>
 

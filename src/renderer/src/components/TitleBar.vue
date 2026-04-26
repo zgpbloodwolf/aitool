@@ -3,6 +3,7 @@ import { useExtensionStore } from '../stores/extension'
 
 const emit = defineEmits<{
   (e: 'toggle-sidebar'): void
+  (e: 'open-settings'): void
 }>()
 
 const extStore = useExtensionStore()
@@ -26,6 +27,14 @@ const extStore = useExtensionStore()
     </div>
     <div class="titlebar-center">
       <span v-if="extStore.extensions.length === 0" class="hint-text">未加载扩展</span>
+    </div>
+    <div class="titlebar-right no-drag">
+      <button class="icon-btn" @click="emit('open-settings')" title="设置 (Ctrl+,)">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M8 10.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM8 12a4 4 0 1 1 0-8 4 4 0 0 1 0 8z" />
+          <path d="M6.87 1.24l-.28.95a5.49 5.49 0 0 0-1.34.77l-.93-.36-.64 1.1.7.7a5.48 5.48 0 0 0 0 1.55l-.7.7.64 1.1.93-.36c.4.31.85.57 1.34.77l.28.95h1.26l.28-.95a5.49 5.49 0 0 0 1.34-.77l.93.36.64-1.1-.7-.7a5.48 5.48 0 0 0 0-1.55l.7-.7-.64-1.1-.93.36a5.49 5.49 0 0 0-1.34-.77l-.28-.95H6.87z" />
+        </svg>
+      </button>
     </div>
   </div>
 </template>
@@ -88,6 +97,12 @@ const extStore = useExtensionStore()
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
+}
+
+.titlebar-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .hint-text {

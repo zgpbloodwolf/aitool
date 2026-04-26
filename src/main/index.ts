@@ -82,7 +82,8 @@ function createWindow(): BrowserWindow {
     const shortcuts: Record<string, string> = {
       'n': 'shortcut:new-tab',
       'w': 'shortcut:close-tab',
-      'b': 'shortcut:toggle-sidebar'
+      'b': 'shortcut:toggle-sidebar',
+      ',': 'shortcut:open-settings'
     }
     if (input.key === 'Tab') {
       event.preventDefault()
