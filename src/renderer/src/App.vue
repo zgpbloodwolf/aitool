@@ -10,6 +10,7 @@ import Sidebar from './components/Sidebar.vue'
 import ChatPanel from './components/ChatPanel.vue'
 import StatusBar from './components/StatusBar.vue'
 import SettingsDrawer from './components/SettingsDrawer.vue'
+import UpdatePrompt from './components/UpdatePrompt.vue'
 
 const extStore = useExtensionStore()
 const workspaceStore = useWorkspaceStore()
@@ -207,6 +208,8 @@ onBeforeUnmount(() => {
     <StatusBar />
     <!-- 设置面板 — 覆盖在内容区上方 -->
     <SettingsDrawer v-if="settingsOpen" @close="settingsOpen = false" />
+    <!-- D-14: 更新提示模态框 — 发现新版本时显示 -->
+    <UpdatePrompt />
   </div>
 </template>
 

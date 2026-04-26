@@ -49,6 +49,17 @@ declare global {
       notificationAction: (notificationId: string, action: string, replyText?: string) => void
       onNotificationFocusTab: (callback: (channelId: string) => void) => () => void
       onNotificationPlaySound: (callback: (type: string) => void) => () => void
+      updaterCheck: () => Promise<{ version: string | null; error?: string }>
+      updaterDownload: () => void
+      updaterInstall: () => void
+      onUpdaterAvailable: (
+        callback: (info: { version: string; releaseNotes?: unknown }) => void
+      ) => () => void
+      onUpdaterProgress: (
+        callback: (data: { percent: number; bytesPerSecond: number }) => void
+      ) => () => void
+      onUpdaterDownloaded: (callback: () => void) => () => void
+      onUpdaterError: (callback: (data: { message: string }) => void) => () => void
     }
   }
 }

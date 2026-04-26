@@ -136,6 +136,45 @@ const api = {
       callback(type)
     ipcRenderer.on('notification:play-sound', handler)
     return () => ipcRenderer.removeListener('notification:play-sound', handler)
+  },
+
+  // 自动更新 IPC
+  updaterCheck: (): Promise<{ version: string | null; error?: string }> =>
+    ipcRenderer.invoke('updater:check'),
+  updaterDownload: (): void => ipcRenderer.send('updater:download'),
+  updaterInstall: (): void => ipcRenderer.send('updater:install'),
+  onUpdaterAvailable: (
+    callback: (info: { version: string; releaseNotes?: unknown }) => void
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      info: { version: string; releaseNotes?: unknown }
+    ): void => callback(info)
+    ipcRenderer.on('updater:available', handler)
+    return () => ipcRenderer.removeListener('updater:available', handler)
+  },
+  onUpdaterProgress: (
+    callback: (data: { percent: number; bytesPerSecond: number }) => void
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      data: { percent: number; bytesPerSecond: number }
+    ): void => callback(data)
+    ipcRenderer.on('updater:progress', handler)
+    return () => ipcRenderer.removeListener('updater:progress', handler)
+  },
+  onUpdaterDownloaded: (callback: () => void): (() => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on('updater:downloaded', handler)
+    return () => ipcRenderer.removeListener('updater:downloaded', handler)
+  },
+  onUpdaterError: (callback: (data: { message: string }) => void): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      data: { message: string }
+    ): void => callback(data)
+    ipcRenderer.on('updater:error', handler)
+    return () => ipcRenderer.removeListener('updater:error', handler)
   }
 }
 
