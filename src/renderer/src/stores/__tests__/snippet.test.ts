@@ -1,6 +1,7 @@
 // 收藏片段 store 单元测试
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
+import { nextTick } from 'vue'
 
 // mock localStorage
 const localStorageMock = (() => {
@@ -144,9 +145,12 @@ describe('useSnippetStore', () => {
   })
 
   describe('localStorage 持久化', () => {
-    it('修改后自动写入 localStorage', () => {
+    it('修改后自动写入 localStorage', async () => {
       const store = useSnippetStore()
       store.addSnippet('持久化测试', '内容')
+
+      // Vue watch 回调在 nextTick 中执行，需要等待
+      await nextTick()
 
       // 验证 localStorage.setItem 被调用，且包含正确数据
       expect(localStorageMock.setItem).toHaveBeenCalledWith(
