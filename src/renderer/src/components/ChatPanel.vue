@@ -558,6 +558,13 @@ watch(
 ;(window as any).__channelToTab = channelToTab
 watch(activeTabId, (newId) => {
   ;(window as any).__activeTabId = newId
+  // 标签切换时通知主进程关闭该标签对应的通知
+  if (newId) {
+    const chId = Array.from(channelToTab.entries()).find(([, tabId]) => tabId === newId)?.[0]
+    if (chId) {
+      window.api?.send('notification:tab-activated', chId)
+    }
+  }
 }, { immediate: true })
 
 /** 切换到下一个标签（循环） */

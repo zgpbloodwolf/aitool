@@ -38,6 +38,7 @@ export class NotificationManager {
   constructor(mainWindow: BrowserWindow) {
     this.mainWindow = mainWindow
     this.registerIpcHandlers()
+    this.registerTabChangeListener()
   }
 
   private registerIpcHandlers(): void {
@@ -62,10 +63,23 @@ export class NotificationManager {
           // 跳转到对应标签页
           if (entry.channelId) {
             this.mainWindow.webContents.send('notification:focus-tab', entry.channelId)
+            // 跳转后关闭该对话的所有通知
+            this.dismissByChannelId(entry.channelId)
+          } else {
+            this.dismiss(data.notificationId)
           }
-          break
+          return
       }
       this.dismiss(data.notificationId)
+    })
+  }
+
+  /** 监听渲染进程标签切换事件，关闭已激活标签对应的通知 */
+  private registerTabChangeListener(): void {
+    ipcMain.on('notification:tab-activated', (_event, channelId: string) => {
+      if (channelId) {
+        this.dismissByChannelId(channelId)
+      }
     })
   }
 
@@ -226,6 +240,18 @@ export class NotificationManager {
     clearTimeout(entry.timeout)
     entry.window.close()
     activeNotifications.splice(idx, 1)
+    this.repositionAll()
+  }
+
+  /** 关闭指定 channelId 对应的所有通知 */
+  dismissByChannelId(channelId: string): void {
+    const toRemove = activeNotifications.filter(n => n.channelId === channelId)
+    for (const entry of toRemove) {
+      clearTimeout(entry.timeout)
+      entry.window.close()
+      const idx = activeNotifications.indexOf(entry)
+      if (idx !== -1) activeNotifications.splice(idx, 1)
+    }
     this.repositionAll()
   }
 

@@ -49,6 +49,7 @@ declare global {
       notificationAction: (notificationId: string, action: string, replyText?: string) => void
       onNotificationFocusTab: (callback: (channelId: string) => void) => () => void
       onNotificationPlaySound: (callback: (type: string) => void) => () => void
+      send: (channel: string, ...args: unknown[]) => void
       setZoomFactor: (factor: number) => void
       updaterCheck: () => Promise<{ version: string | null; error?: string }>
       updaterDownload: () => void

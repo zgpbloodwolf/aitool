@@ -53,16 +53,10 @@
       outline: none;
     }
     .notif-input:focus { border-color: #89b4fa; }
-    .notif-close {
-      position: absolute; top: 4px; right: 4px;
-      background: none; border: none; color: #6c7086; font-size: 14px;
-      cursor: pointer; padding: 0 4px; line-height: 1;
-    }
-    .notif-close:hover { color: #cdd6f4; }
   </style>
 </head>
 <body>
-  <div class="notif-card" id="card"><button class="notif-close" onclick="closeNotif()">&times;</button></div>
+  <div class="notif-card" id="card"></div>
   <script>
     var params = new URLSearchParams(window.location.search)
     var id = params.get('id')
@@ -108,15 +102,6 @@
     }
 
     card.innerHTML = html
-
-    function closeNotif() {
-      try {
-        var ipcRenderer = require('electron').ipcRenderer
-        ipcRenderer.send('notification:action', {
-          notificationId: id, action: 'dismiss'
-        })
-      } catch (e) {}
-    }
 
     function action(act) {
       var replyText = document.getElementById('replyInput')

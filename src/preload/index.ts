@@ -138,6 +138,9 @@ const api = {
     return () => ipcRenderer.removeListener('notification:play-sound', handler)
   },
 
+  // 标签激活通知 — 用户切换标签时关闭对应对话的通知
+  send: (channel: string, ...args: unknown[]): void => ipcRenderer.send(channel, ...args),
+
   // 缩放 IPC — 渲染进程通过 preload 调用 webFrame
   setZoomFactor: (factor: number): void => {
     const { webFrame } = require('electron')
