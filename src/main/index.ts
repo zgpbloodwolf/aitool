@@ -84,7 +84,8 @@ function createWindow(): BrowserWindow {
       'n': 'shortcut:new-tab',
       'w': 'shortcut:close-tab',
       'b': 'shortcut:toggle-sidebar',
-      ',': 'shortcut:open-settings'
+      ',': 'shortcut:open-settings',
+      '0': 'shortcut:reset-zoom'
     }
     if (input.key === 'Tab') {
       event.preventDefault()

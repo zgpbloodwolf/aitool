@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useExtensionStore } from './stores/extension'
 import { useWorkspaceStore } from './stores/workspace'
+import { useSettingsStore } from './stores/settings'
+import { loadAndApplyZoom, resetZoom, applyZoom } from './composables/useZoom'
 import TitleBar from './components/TitleBar.vue'
 import Sidebar from './components/Sidebar.vue'
 import ChatPanel from './components/ChatPanel.vue'
@@ -131,6 +133,9 @@ function handleShortcut(action: string): void {
     case 'open-settings':
       settingsOpen.value = !settingsOpen.value
       break
+    case 'reset-zoom':
+      resetZoom()
+      break
   }
 }
 
@@ -144,6 +149,15 @@ onMounted(() => {
   document.addEventListener('keydown', handleGlobalKeydown)
   // D-05: 注册 IPC 快捷键（主进程拦截，iframe 焦点时也生效）
   offShortcut = window.api.onShortcut(handleShortcut)
+
+  // D-09: 应用保存的缩放值
+  loadAndApplyZoom()
+
+  // D-09: 监听缩放设置变化，实时应用
+  const settingsStore = useSettingsStore()
+  watch(() => settingsStore.settings.zoomFactor, (newFactor) => {
+    applyZoom(newFactor)
+  })
 })
 
 onBeforeUnmount(() => {
