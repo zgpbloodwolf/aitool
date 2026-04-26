@@ -600,27 +600,19 @@ const progress = ref(0)
 | A5 | electron-vite 自动处理 electron-updater 的打包（无需额外配置） | Standard Stack | 更新功能不工作 |
 | A6 | 音效文件来源: Pixabay 或 freesound.org 的 CC0 音效可满足商业友好要求 | Claude's Discretion | 许可证风险 |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **GitHub 仓库 URL 和 owner/repo**
-   - What we know: 项目名为 `new-aitools`，git 用户为 `zhengenpeng`
-   - What's unclear: 具体的 GitHub 仓库 URL 和是否为 public repo
-   - Recommendation: 在 electron-builder.yml 中显式配置 `owner` 和 `repo`，不要依赖自动检测
+1. **GitHub 仓库 URL 和 owner/repo** — RESOLVED by Plan 05
+   - Resolution: Hardcoded as `owner: zhengenpeng`, `repo: new-aitools` in electron-builder.yml. Git user confirmed from repo config.
 
-2. **声音文件路径解析**
-   - What we know: `resources/**` 已配置 `asarUnpack`，`resources/` 目录已存在
-   - What's unclear: electron-vite 开发模式下 `resources/sounds/` 的实际访问路径
-   - Recommendation: 开发模式下使用相对路径 `resources/sounds/`，生产模式下使用 `process.resourcesPath + '/resources/sounds/'`。实现时需要测试验证
+2. **声音文件路径解析** — RESOLVED by Plan 03
+   - Resolution: Sound files placed in `resources/sounds/` (ASAR-unpacked directory). In dev mode, relative path `resources/sounds/{name}.wav` works. In production, use `process.resourcesPath + '/resources/sounds/{name}.wav'`. The useSound composable handles both paths with try/catch fallback. Sound defaults to OFF, so path issues are non-blocking.
 
-3. **通知窗口的 HTML 入口如何被 electron-vite 处理**
-   - What we know: electron-vite 处理 main/preload/renderer 三个入口
-   - What's unclear: 额外的 BrowserWindow 加载的 HTML 文件是否需要特殊配置
-   - Recommendation: 通知窗口的 HTML 可以放在 `out/renderer/` 之外，使用 `win.loadFile()` 加载独立的 HTML。或者复用 renderer 入口通过 query 参数区分
+3. **通知窗口的 HTML 入口如何被 electron-vite 处理** — RESOLVED by Plan 04
+   - Resolution: Uses `loadFile()` with the main preload bridge (`src/preload/index.js`). The notification HTML (`src/notification/index.html`) is a self-contained file. For production, added to `electron-builder.yml` `extraFiles` config to copy into the build output. Dev mode loads from `src/notification/index.html` via `__dirname` relative path.
 
-4. **「关闭行为」存储位置**
-   - What we know: D-06 决定设置用 localStorage
-   - What's unclear: `close` 事件发生在主进程，此时渲染进程可能已不可用
-   - Recommendation: 关闭行为需要特殊处理 — (a) 在渲染进程初始化时读取并通过 IPC 同步给主进程，或 (b) 主进程使用 `electron-store` 或简单的 JSON 文件存储此一项配置。推荐方案 (b) 用一个独立的 JSON 文件（如 `app-close-behavior.json`）避免引入新依赖
+4. **「关闭行为」存储位置** — RESOLVED by Plan 02
+   - Resolution: Uses a simple JSON file at `app.getPath('userData')/close-behavior.json`. The tray manager reads/writes this directly from the main process, avoiding the need for localStorage access or electron-store dependency. The settings drawer syncs changes via IPC (`settings:update-close-behavior`).
 
 ## Environment Availability
 
