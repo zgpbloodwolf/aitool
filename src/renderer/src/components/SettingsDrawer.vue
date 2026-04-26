@@ -13,6 +13,12 @@ const closeOptions: { value: CloseBehavior; label: string }[] = [
   { value: 'quit', label: '退出应用' },
   { value: 'ask', label: '每次询问' }
 ]
+
+/** 更新关闭行为 — 同步到 settings store 和主进程 JSON 文件 */
+function updateCloseBehavior(value: CloseBehavior): void {
+  settingsStore.update({ closeBehavior: value })
+  window.api.updateCloseBehavior(value)
+}
 </script>
 
 <template>
@@ -183,7 +189,7 @@ const closeOptions: { value: CloseBehavior; label: string }[] = [
               v-for="opt in closeOptions"
               :key="opt.value"
               class="setting-row radio-row"
-              @click="settingsStore.update({ closeBehavior: opt.value })"
+              @click="updateCloseBehavior(opt.value)"
             >
               <input
                 type="radio"
@@ -191,7 +197,7 @@ const closeOptions: { value: CloseBehavior; label: string }[] = [
                 :value="opt.value"
                 :checked="settingsStore.settings.closeBehavior === opt.value"
                 class="radio-input"
-                @click.stop="settingsStore.update({ closeBehavior: opt.value })"
+                @click.stop="updateCloseBehavior(opt.value)"
               />
               <span class="setting-label">{{ opt.label }}</span>
             </div>
