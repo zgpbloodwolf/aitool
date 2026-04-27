@@ -347,7 +347,7 @@ function handleIoMessage(channelId: string, message: unknown, _done?: boolean): 
   if (msg?.type === 'user') {
     channel.process.send({
       type: 'user',
-      session_id: '',
+      session_id: channel.lastSessionId || '',
       message: msg.message || msg,
       parent_tool_use_id: null
     })
@@ -458,7 +458,7 @@ function sendToolPermissionRequest(
       safeLog('[ClaudeIPC] 工具权限请求超时:', requestId)
       channel.process.send({
         type: 'user',
-        session_id: '',
+        session_id: channel.lastSessionId || '',
         message: {
           role: 'user',
           content: [
@@ -512,7 +512,7 @@ function sendToolPermissionRequest(
       const answer = result.updatedInput || inputs
       channel.process.send({
         type: 'user',
-        session_id: '',
+        session_id: channel.lastSessionId || '',
         message: {
           role: 'user',
           content: [
@@ -528,7 +528,7 @@ function sendToolPermissionRequest(
     } else {
       channel.process.send({
         type: 'user',
-        session_id: '',
+        session_id: channel.lastSessionId || '',
         message: {
           role: 'user',
           content: [
