@@ -5,13 +5,17 @@ import { app } from 'electron'
 import { safeLog } from './logger'
 
 function getExtensionsDir(): string {
-  const appPath = app.isPackaged ? process.resourcesPath : app.getAppPath()
-  return join(appPath, 'extensions')
+  // 打包后 extensions 需要可写，放在 userData 下
+  // 开发模式直接放在项目根目录
+  if (app.isPackaged) {
+    return join(app.getPath('userData'), 'extensions')
+  }
+  return join(app.getAppPath(), 'extensions')
 }
 
 function getResourcesDir(): string {
-  const appPath = app.isPackaged ? process.resourcesPath : app.getAppPath()
-  return join(appPath, 'resources')
+  // resources/ 包含 vsix 等只读资源，在 ASAR unpacked 目录中
+  return join(app.getAppPath(), 'resources')
 }
 
 // 查找本地 vsix 文件

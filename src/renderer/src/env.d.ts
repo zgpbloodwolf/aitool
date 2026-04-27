@@ -96,15 +96,18 @@ interface WindowApi {
   onProcessCrashed: (callback: (data: { channelId: string; canRecover: boolean }) => void) => () => void
   onProcessUnresponsive: (callback: (data: { channelId: string }) => void) => () => void
   onShortcut: (callback: (action: string) => void) => () => void
+  // 设置
   updateCloseBehavior: (behavior: 'minimize' | 'quit' | 'ask') => void
   onCloseBehaviorChanged: (callback: (behavior: string) => void) => () => void
+  // 通知
   notificationAction: (notificationId: string, action: string, replyText?: string) => void
   onNotificationFocusTab: (callback: (channelId: string) => void) => () => void
   onNotificationPlaySound: (callback: (type: string) => void) => () => void
-  onThemeSystemChanged: (callback: (resolvedTheme: 'dark' | 'light') => void) => () => void
-  updateTheme: (mode: 'dark' | 'light' | 'system', resolved?: 'dark' | 'light') => void
+  // 通用 IPC
   send: (channel: string, ...args: unknown[]) => void
+  // 缩放
   setZoomFactor: (factor: number) => void
+  // 自动更新
   updaterCheck: () => Promise<{ version: string | null; error?: string }>
   updaterDownload: () => void
   updaterInstall: () => void
@@ -119,6 +122,13 @@ interface WindowApi {
   ) => () => void
   onUpdaterDownloaded: (callback: () => void) => () => void
   onUpdaterError: (callback: (data: { message: string }) => void) => () => void
+  // 对话导出
+  showSaveDialog: (options: { defaultPath: string; title: string }) => Promise<{ canceled: boolean; filePath: string }>
+  getActiveSessionId: (channelId: string) => Promise<string | null>
+  exportSession: (sessionId: string, title: string, savePath: string) => Promise<{ success: boolean; error?: string }>
+  // 主题
+  updateTheme: (mode: 'dark' | 'light' | 'system', resolved?: 'dark' | 'light') => void
+  onThemeSystemChanged: (callback: (resolvedTheme: 'dark' | 'light') => void) => () => void
 }
 
 declare global {

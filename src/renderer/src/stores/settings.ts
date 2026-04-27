@@ -46,6 +46,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const raw = localStorage.getItem(SETTINGS_KEY)
   const initial: SettingsState = raw ? { ...DEFAULTS, ...safeParse(raw) } : { ...DEFAULTS }
 
+  // 响应式状态 — 聚合为单一对象，用于 watch deep
   const settings = ref<SettingsState>({
     soundEnabled: initial.soundEnabled,
     soundVolume: initial.soundVolume,

@@ -14,8 +14,10 @@ const TARGET_EXTENSIONS = new Set([
 
 // 只搜索项目内置 extensions/ 目录
 function getExtensionsDir(): string {
-  const appPath = app.isPackaged ? process.resourcesPath : app.getAppPath()
-  return join(appPath, 'extensions')
+  if (app.isPackaged) {
+    return join(app.getPath('userData'), 'extensions')
+  }
+  return join(app.getAppPath(), 'extensions')
 }
 
 export async function discoverExtensions(): Promise<DiscoveredExtension[]> {
