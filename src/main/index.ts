@@ -6,6 +6,7 @@ import { registerFilesystemHandlers } from './ipc/filesystem'
 import { registerExtensionHandlers } from './ipc/extensions'
 import { registerClaudeWebviewHandlers, shutdownClaude } from './ipc/claude-webview'
 import { bootstrapWeChat, registerWeChatHandlers } from './ipc/wechat'
+import { registerTokenUsageHandlers } from './ipc/token-usage'
 import { registerFileWatcherHandlers, stopAllWatchers } from './ipc/file-watcher'
 import { stopWebviewServer, setWebviewTheme } from './claude/webview-server'
 import { setupTray, registerTrayHandlers } from './tray/tray-manager'
@@ -136,6 +137,7 @@ app.whenReady().then(() => {
   registerFilesystemHandlers()
   registerExtensionHandlers()
   registerClaudeWebviewHandlers()
+  registerTokenUsageHandlers()
   registerWeChatHandlers()
   registerFileWatcherHandlers()
   void bootstrapWeChat()

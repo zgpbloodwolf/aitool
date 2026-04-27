@@ -10,6 +10,7 @@ import { listSessions, getSessionMessages, deleteSession, exportSessionAsMarkdow
 import { discoverSkills, runClaudeCliCommand } from '../claude/plugin-manager'
 import { handleGetMcpServers, handleMcpServerCommand } from '../claude/mcp-manager'
 import { notificationManager } from '../notification/notification-registry'
+import { recordTokenUsage } from '../claude/token-usage-store'
 
 interface PendingToolUse {
   id: string
@@ -36,6 +37,8 @@ interface Channel {
   totalOutputTokens: number
   // D-10: 最后一次启动时的 resumeSessionId，用于崩溃恢复
   lastSessionId: string | null
+  // UX-09: 工作目录路径，用于 token 用量按工作区分组统计
+  cwd: string
   // 用户主动中断标记 — exit handler 不发崩溃通知，等用户发新消息时恢复
   interrupted?: boolean
 }
@@ -339,7 +342,9 @@ async function handleLaunchClaude(
     totalInputTokens: 0,
     totalOutputTokens: 0,
     // D-10: 保存 sessionId 用于崩溃恢复
-    lastSessionId: resumeSessionId || null
+    lastSessionId: resumeSessionId || null,
+    // UX-09: 保存工作目录用于 token 用量统计
+    cwd: cwd || process.cwd()
   })
   launchingChannels.delete(channelId)
 
@@ -605,6 +610,18 @@ function handleCloseChannel(channelId: string): void {
   const channel = channels.get(channelId)
   if (!channel) return
   safeLog('[ClaudeIPC] 正在关闭频道:', channelId)
+
+  // UX-09: Token 用量记录 — 会话结束时聚合 (D-03)
+  if (channel.totalInputTokens > 0 || channel.totalOutputTokens > 0) {
+    recordTokenUsage({
+      id: channelId,
+      cwd: channel.cwd,
+      inputTokens: channel.totalInputTokens,
+      outputTokens: channel.totalOutputTokens,
+      timestamp: Date.now()
+    })
+  }
+
   // D-12: 清理所有 pending 的超时定时器
   for (const resolver of channel.permissionResolvers.values()) {
     clearTimeout(resolver.timeoutId)
