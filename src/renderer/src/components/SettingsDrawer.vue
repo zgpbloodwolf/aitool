@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useSettingsStore, type CloseBehavior, type ThemeMode } from '../stores/settings'
+import TokenUsagePanel from './TokenUsagePanel.vue'
 
 const settingsStore = useSettingsStore()
 
@@ -234,6 +235,12 @@ function updateCloseBehavior(value: CloseBehavior): void {
               />
               <span class="setting-label">{{ opt.label }}</span>
             </div>
+          </section>
+
+          <!-- 用量统计 (UX-09) -->
+          <section class="settings-section">
+            <h3 class="section-title">用量统计</h3>
+            <TokenUsagePanel />
           </section>
         </div>
       </div>
