@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-04-24)
 
 **Core value:** Users can interact with Claude Code in the desktop client without 429 rate limit errors
-**Current focus:** Phase 7 planned, ready to execute
+**Current focus:** Phase 07-workflow-enhancement in progress
 
 ## Current Position
 
-Phase: 07b (停止按钮修复) — CONTEXT UPDATED
-Plan: 0/1 in current phase
-Status: Ready for planning
-Last activity: 2026-04-27 -- Phase 07b context updated (stdin control message approach)
+Phase: 07-workflow-enhancement
+Plan: 1/3 in current phase
+Status: Plan 07-01 complete, ready for 07-02
+Last activity: 2026-04-27 -- Plan 07-01 Token 用量数据管线 complete
 
-Progress: [########..] ~78% (phases 1-6 complete, phase 7 planned, 2 phases remaining)
+Progress: [########..] ~80% (phases 1-6 complete, phase 7 plan 1/3, 2 phases remaining)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 12
+- Total plans completed: 13
 - Average duration: ~6 min
-- Total execution time: ~1h 23min
+- Total execution time: ~1h 30min
 
 **By Phase:**
 
@@ -32,10 +32,11 @@ Progress: [########..] ~78% (phases 1-6 complete, phase 7 planned, 2 phases rema
 | 3. UX Enhancement | 6 | ~40 min | ~7 min |
 | 4. Quick Wins | 5 | ~18 min | ~3.6 min |
 | 5. 主题个性化 | 3 | ~16 min | ~5 min |
+| 7. 工作流增强 | 1 | ~7 min | ~7 min |
 
 **Recent Trend:**
-- Last 5 plans: 05-03 (6min), 06-01 (5min), 06-02 (3min), 06-03 (3min), 06-04 (3min)
-- Trend: Consistent execution, Phase 6 complete
+- Last 5 plans: 06-01 (5min), 06-02 (3min), 06-03 (3min), 06-04 (3min), 07-01 (7min)
+- Trend: Consistent execution, Phase 7 in progress
 
 *Updated after each plan completion*
 
@@ -50,6 +51,7 @@ Recent decisions affecting current work:
 - 关闭行为使用独立 JSON 文件存储（userData/close-behavior.json）而非 IPC 桥接 localStorage，因为主进程在渲染进程未就绪时就需要读取
 - ClipboardPanel 使用 Teleport to body 避免 z-index 层叠问题，通过 App.vue handleShortcut 转发到 ChatPanel.toggleClipboardPanel
 - Ctrl+Shift+V 在主进程 before-input-event 拦截确保 iframe 焦点时也能触发
+- Token 用量持久化使用 JSON 文件 + Promise chain 写入队列，按天汇总，90 天自动清理
 
 ### Pending Todos
 
@@ -72,5 +74,5 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-04-27
-Stopped at: Phase 07b context updated — stdin control message approach
-Resume file: .planning/phases/07b-stop-button-fix/07b-CONTEXT.md
+Stopped at: Phase 07 Plan 01 complete — Token 用量数据管线
+Resume file: .planning/phases/07-workflow-enhancement/07-01-SUMMARY.md
