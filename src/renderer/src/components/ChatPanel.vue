@@ -98,6 +98,8 @@ const pendingResume = new Map<string, string>()
 let offWebviewMessage: (() => void) | null = null
 let offProcessCrashed: (() => void) | null = null
 let offProcessUnresponsive: (() => void) | null = null
+// UX-10: 右键菜单打开目录事件清理函数
+let offOpenDirectory: (() => void) | undefined
 let tabCounter = 0
 
 // D-11: 无响应的 channel 集合，用于显示重启按钮
@@ -603,6 +605,14 @@ onMounted(() => {
     showStatus('进程无响应，可能已挂死', 'error')
   })
 
+  // UX-10: 右键菜单打开目录 — 创建新标签页并设置工作目录
+  offOpenDirectory = window.api.onOpenDirectory?.((dirPath: string) => {
+    if (dirPath) {
+      window.api.claudeSetCwd(dirPath)
+      addNewTab()
+    }
+  })
+
   initWebview()
 })
 
@@ -620,6 +630,7 @@ onBeforeUnmount(() => {
     offProcessUnresponsive()
     offProcessUnresponsive = null
   }
+  offOpenDirectory?.()
 })
 
 // 主题切换时重新加载 webview iframe，使 webview 跟随主题变化
