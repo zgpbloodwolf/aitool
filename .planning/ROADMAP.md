@@ -16,7 +16,7 @@
 - [x] **Phase 4: Quick Wins** - 交互式通知、托盘图标、声音提示、全局缩放、自动更新 (2026-04-26)
 - [x] **Phase 5: 主题个性化** - 主题系统（暗色/亮色/跟随系统） (2026-04-26)
 - [x] **Phase 6: 知识管理** - 对话导出、剪贴板增强 (2026-04-26)
-- [ ] **Phase 7: 工作流增强** - Token 用量统计、Windows 右键菜单集成
+- [x] **Phase 7: 工作流增强** - Token 用量统计、Windows 右键菜单集成 (2026-04-27)
 - [ ] **Phase 8: 高级特性** - 多窗口支持、对话分支
 - [ ] **Phase 9: 远程访问** - 微信公众号集成
 
@@ -193,7 +193,7 @@ Plans:
 Plans:
 - [x] 07-01-PLAN.md — Token 用量数据层 (持久化 + IPC + preload 桥接)
 - [x] 07-02-PLAN.md — Windows 右键菜单集成 (NSIS + 单实例锁 + 注册表)
-- [ ] 07-03-PLAN.md — Token 统计面板 UI (Chart.js + SettingsDrawer 集成)
+- [x] 07-03-PLAN.md — Token 统计面板 UI (Chart.js + SettingsDrawer 集成)
 
 **Success Criteria**:
   1. Token 用量统计面板正确显示汇总数据和趋势图
@@ -255,7 +255,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 4. Quick Wins | 5/5 | Complete | 2026-04-26 |
 | 5. 主题个性化 | 3/3 | Complete | 2026-04-26 |
 | 6. 知识管理 | 4/4 | Complete | 2026-04-26 |
-| 7. 工作流增强 | 2/3 | In progress | - |
+| 7. 工作流增强 | 3/3 | Complete | 2026-04-27 |
 | 8. 高级特性 | 0/- | Not started | - |
 | 9. 远程访问 | 0/- | Not started | - |
 
