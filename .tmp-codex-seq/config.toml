@@ -1,0 +1,4 @@
+﻿model = "gpt-5.4"
+[[hooks]]
+event = "SessionStart"
+command = "echo hi"

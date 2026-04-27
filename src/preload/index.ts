@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { WeChatAccountRecord, WeChatConversationRecord } from '../main/wechat/types'
 
 const api = {
   // Workspace
@@ -36,6 +37,22 @@ const api = {
     ipcRenderer.invoke('claude:resume-session', channelId, sessionId),
   claudeWebviewFromWebview: (msg: unknown): void =>
     ipcRenderer.send('claude-webview:from-webview', msg),
+  wechatStartQrLogin: (baseUrl?: string): Promise<{ sessionKey: string; qrUrl?: string; message: string }> =>
+    ipcRenderer.invoke('wechat:startQrLogin', baseUrl),
+  wechatWaitQrLogin: (
+    sessionKey: string,
+    baseUrl?: string
+  ): Promise<{
+    connected: boolean
+    accountId?: string
+    userId?: string
+    baseUrl?: string
+    token?: string
+    message: string
+  }> => ipcRenderer.invoke('wechat:waitQrLogin', sessionKey, baseUrl),
+  wechatListAccounts: (): Promise<WeChatAccountRecord[]> => ipcRenderer.invoke('wechat:listAccounts'),
+  wechatListConversations: (): Promise<WeChatConversationRecord[]> =>
+    ipcRenderer.invoke('wechat:listConversations'),
   onClaudeMessage: (callback: (msg: unknown) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, msg: unknown): void => callback(msg)
     ipcRenderer.on('claude:message', handler)

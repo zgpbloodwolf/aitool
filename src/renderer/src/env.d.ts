@@ -35,6 +35,46 @@ interface WindowApi {
   claudeResumeSession: (channelId: string | null, sessionId: string) => Promise<{ success: boolean; error?: string; channelId?: string }>
   claudeStartWebviewServer: (extensionPath: string) => Promise<number>
   claudeWebviewFromWebview: (msg: unknown) => void
+  wechatStartQrLogin: (baseUrl?: string) => Promise<{
+    sessionKey: string
+    qrUrl?: string
+    message: string
+  }>
+  wechatWaitQrLogin: (sessionKey: string, baseUrl?: string) => Promise<{
+    connected: boolean
+    accountId?: string
+    userId?: string
+    baseUrl?: string
+    token?: string
+    message: string
+  }>
+  wechatListAccounts: () => Promise<{
+    accountId: string
+    userId?: string
+    displayName?: string
+    baseUrl: string
+    enabled: boolean
+    connected: boolean
+    defaultEngine: 'claude' | 'codex' | null
+    sessionIsolationMode: 'per-contact' | 'shared'
+    lastConnectedAt?: number
+    lastInboundAt?: number
+    lastOutboundAt?: number
+    lastError?: string | null
+  }[]>
+  wechatListConversations: () => Promise<{
+    conversationKey: string
+    accountId: string
+    peerUserId: string
+    peerDisplayName?: string
+    engine: 'claude' | 'codex'
+    aiSessionId: string
+    processing: boolean
+    lastMessagePreview?: string
+    lastInboundAt?: number
+    lastOutboundAt?: number
+    lastError?: string | null
+  }[]>
   onClaudeMessage: (callback: (msg: unknown) => void) => () => void
   onClaudeError: (callback: (err: string) => void) => () => void
   onClaudeExit: (callback: (code: number | null) => void) => () => void

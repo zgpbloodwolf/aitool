@@ -5,9 +5,11 @@ import TitleBar from './components/TitleBar.vue'
 import Sidebar from './components/Sidebar.vue'
 import ChatPanel from './components/ChatPanel.vue'
 import StatusBar from './components/StatusBar.vue'
+import WeChatWorkspace from './components/wechat/WeChatWorkspace.vue'
 
 const extStore = useExtensionStore()
 const sidebarVisible = ref(true)
+const activeView = ref<'chat' | 'wechat'>('chat')
 
 onMounted(() => {
   extStore.loadExtensions()
@@ -18,9 +20,10 @@ onMounted(() => {
   <div class="app-layout">
     <TitleBar @toggle-sidebar="sidebarVisible = !sidebarVisible" />
     <div class="main-content">
-      <Sidebar v-if="sidebarVisible" />
+      <Sidebar v-if="sidebarVisible" v-model:active-view="activeView" />
       <div class="center-area">
-        <ChatPanel class="chat-area" />
+        <ChatPanel v-if="activeView === 'chat'" class="chat-area" />
+        <WeChatWorkspace v-else class="chat-area" />
       </div>
     </div>
     <StatusBar />

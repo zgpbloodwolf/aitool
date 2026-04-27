@@ -5,6 +5,7 @@ import { registerDialogHandlers } from './ipc/dialog'
 import { registerFilesystemHandlers } from './ipc/filesystem'
 import { registerExtensionHandlers, shutdownExtensionHost } from './ipc/extensions'
 import { registerClaudeWebviewHandlers, shutdownClaude } from './ipc/claude-webview'
+import { bootstrapWeChat, registerWeChatHandlers } from './ipc/wechat'
 import { stopWebviewServer } from './claude/webview-server'
 
 // 设置 Windows 控制台代码页为 UTF-8，防止中文日志乱码
@@ -80,6 +81,8 @@ app.whenReady().then(() => {
   registerFilesystemHandlers()
   registerExtensionHandlers()
   registerClaudeWebviewHandlers()
+  registerWeChatHandlers()
+  void bootstrapWeChat()
 
   createWindow()
 
