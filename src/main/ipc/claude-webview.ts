@@ -357,16 +357,66 @@ function handleIoMessage(channelId: string, message: unknown, _done?: boolean): 
 }
 
 function handleInterrupt(channelId: string): void {
-  // D-04: 诊断日志 — 记录中断请求的关键信息
   safeLog('[ClaudeIPC] handleInterrupt 收到中断请求 — channelId:', channelId)
   const channel = channels.get(channelId)
   if (!channel) {
     safeLog('[ClaudeIPC] handleInterrupt 未找到频道 — channelId:', channelId, '活跃频道:', [...channels.keys()])
     return
   }
-  safeLog('[ClaudeIPC] handleInterrupt 找到频道，调用 interrupt() — channelId:', channelId, '进程运行状态:', channel.process.running)
-  channel.process.interrupt()
-  safeLog('[ClaudeIPC] handleInterrupt interrupt() 已调用 — channelId:', channelId)
+  safeLog('[ClaudeIPC] handleInterrupt 找到频道 — channelId:', channelId, '进程运行状态:', channel.process.running)
+
+  if (!channel.process.running) {
+    safeLog('[ClaudeIPC] handleInterrupt 进程未运行，跳过')
+    return
+  }
+
+  // 非 Windows 平台：SIGINT 可以可靠送达，使用原有 interrupt()
+  if (process.platform !== 'win32') {
+    channel.process.interrupt()
+    safeLog('[ClaudeIPC] handleInterrupt interrupt() 已调用 — channelId:', channelId)
+    return
+  }
+
+  // Windows: kill-and-resume 方案
+  // 根因：windowsHide:true → CREATE_NO_WINDOW → 无控制台 → SIGINT 无法送达
+  // 方案：终止进程 → 用 --resume 重启 → 会话上下文保留，用户可继续对话
+  const sessionId = channel.lastSessionId
+  if (!sessionId) {
+    safeLog('[ClaudeIPC] handleInterrupt 无 sessionId，回退到强制中断')
+    channel.process.interrupt()
+    return
+  }
+
+  safeLog('[ClaudeIPC] handleInterrupt 使用 kill-and-resume — sessionId:', sessionId)
+
+  // 1. 发送合成 result 消息，通知 webview 停止"生成中"状态
+  sendToWebview({
+    type: 'io_message',
+    channelId,
+    message: {
+      type: 'result',
+      subtype: 'success',
+      cost_usd: 0,
+      duration_ms: 0,
+      duration_api_ms: 0,
+      is_error: false,
+      num_turns: 1,
+      session_id: sessionId
+    }
+  })
+
+  // 2. 清理旧 channel（移除监听器防止 exit 事件触发崩溃通知）
+  channel.process.removeAllListeners()
+  channel.process.stop()
+  for (const resolver of channel.permissionResolvers.values()) {
+    clearTimeout(resolver.timeoutId)
+  }
+  channel.permissionResolvers.clear()
+  channels.delete(channelId)
+
+  // 3. 使用 --resume 重启进程，恢复会话上下文
+  safeLog('[ClaudeIPC] handleInterrupt 正在重启进程 — channelId:', channelId)
+  handleLaunchClaude(channelId, currentCwd, 'default', '', sessionId)
 }
 
 function sendToolPermissionRequest(
