@@ -435,7 +435,7 @@ function handleInterrupt(channelId: string): void {
   channel.process.interrupt()
   safeLog('[ClaudeIPC] handleInterrupt 控制消息已发送 — channelId:', channelId)
 
-  // D-03: 超时回退 — 如果 5 秒后进程仍在运行，回退到 kill-and-resume
+  // D-03: 超时回退 — 如果 2 秒后进程仍在运行，回退到 kill-and-resume
   const sessionId = channel.lastSessionId
   if (!sessionId) {
     safeLog('[ClaudeIPC] handleInterrupt 无 sessionId，跳过超时回退设置')
@@ -462,7 +462,7 @@ function handleInterrupt(channelId: string): void {
     channel.interrupted = true
     channel.pendingToolUse = null
     proc.stop()
-  }, 5000)
+  }, 2000)
 }
 
 function sendToolPermissionRequest(
