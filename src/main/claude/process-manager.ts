@@ -127,6 +127,29 @@ export class ClaudeProcessManager extends EventEmitter {
     this.process.stdin?.on('error', () => {
       // stdin closed, ignore
     })
+
+    // 发送 initialize 控制请求，激活 CLI 的 SDK 模式
+    // VSCode 扩展在 Query 构造时发送此消息，CLI 收到后才会处理 control_request（包括 interrupt）
+    this._sendInitialize()
+  }
+
+  /** 发送 initialize 控制请求，激活 CLI SDK 模式 */
+  private _sendInitialize(): void {
+    const requestId = Math.random().toString(36).substring(2, 15)
+    const initMessage = {
+      request_id: requestId,
+      type: 'control_request',
+      request: {
+        subtype: 'initialize',
+        hooks: null,
+        sdkMcpServers: null,
+        systemPrompt: null,
+        allowedTools: null,
+        disallowedTools: null
+      }
+    }
+    console.log('[Claude] 发送 initialize 控制请求 — requestId:', requestId)
+    this.send(initMessage)
   }
 
   send(msg: unknown): void {

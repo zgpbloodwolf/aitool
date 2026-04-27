@@ -254,6 +254,15 @@ async function handleLaunchClaude(
       if (ch) ch.lastSessionId = msg.session_id as string
     }
 
+    // SDK 内部协议消息：control_response / control_request / control_cancel_request / keep_alive
+    // 不转发给 webview，这些是 CLI SDK 模式的内部控制消息
+    if (msg.type === 'control_response' || msg.type === 'control_request' ||
+        msg.type === 'control_cancel_request' || msg.type === 'keep_alive') {
+      safeLog('[ClaudeIPC] SDK 内部消息 [' + channelId + ']:', msg.type,
+        (msg as Record<string, unknown>).subtype || '')
+      return
+    }
+
     let messageCopy: typeof msg
     try {
       messageCopy = structuredClone(msg)
