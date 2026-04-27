@@ -49,6 +49,9 @@ const api = {
   claudeGetContextUsage: (): Promise<
     Record<string, { inputTokens: number; outputTokens: number }>
   > => ipcRenderer.invoke('claude:get-context-usage'),
+  // Token 用量统计 (UX-09)
+  getTokenUsageStats: (range: string): Promise<unknown> =>
+    ipcRenderer.invoke('token-usage:get-stats', range),
   claudeResumeSession: (
     channelId: string | null,
     sessionId: string
@@ -226,6 +229,14 @@ const api = {
     ): void => callback(data)
     ipcRenderer.on('updater:error', handler)
     return () => ipcRenderer.removeListener('updater:error', handler)
+  },
+
+  // 右键菜单打开目录 (UX-10)
+  onOpenDirectory: (callback: (dirPath: string) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, dirPath: string): void =>
+      callback(dirPath)
+    ipcRenderer.on('open-directory', handler)
+    return () => ipcRenderer.removeListener('open-directory', handler)
   }
 }
 

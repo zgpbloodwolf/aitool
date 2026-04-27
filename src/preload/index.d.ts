@@ -72,6 +72,16 @@ declare global {
         title: string,
         savePath: string
       ) => Promise<{ success: boolean; error?: string }>
+      // Token 用量统计 (UX-09)
+      getTokenUsageStats: (range: string) => Promise<{
+        totalInputTokens: number
+        totalOutputTokens: number
+        totalSessions: number
+        days: { date: string; inputTokens: number; outputTokens: number }[]
+        workspaces: { cwd: string; inputTokens: number; outputTokens: number; sessions: number }[]
+      }>
+      // 右键菜单打开目录 (UX-10)
+      onOpenDirectory: (callback: (dirPath: string) => void) => () => void
     }
   }
 }
