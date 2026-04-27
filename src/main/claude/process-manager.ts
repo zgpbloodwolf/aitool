@@ -89,7 +89,8 @@ export class ClaudeProcessManager extends EventEmitter {
       stdio: ['pipe', 'pipe', 'pipe'],
       cwd,
       env,
-      windowsHide: true
+      windowsHide: true,
+      detached: true  // D-01: 创建独立进程组，使 SIGINT 可靠送达 claude.exe
     })
 
     this._running = true
@@ -166,12 +167,27 @@ export class ClaudeProcessManager extends EventEmitter {
   }
 
   interrupt(): void {
-    if (this.process && this._running) {
-      // Windows: kill with SIGINT triggers CTRL_BREAK which claude.exe handles as interrupt
+    // D-05: 诊断日志 — 记录中断请求的状态
+    console.log('[Claude] interrupt() 调用 — PID:', this.process?.pid, '_running:', this._running)
+
+    if (!this.process || !this._running) {
+      console.log('[Claude] interrupt() 跳过 — 进程未运行')
+      return
+    }
+
+    const pid = this.process.pid!
+    try {
+      // D-01: 使用负 PID 向进程组发送 SIGINT
+      // detached: true 使 claude.exe 成为独立进程组组长
+      // process.kill(-pid, 'SIGINT') 映射到 GenerateConsoleCtrlEvent(CTRL_C_EVENT, pgid)
+      process.kill(-pid, 'SIGINT')
+      console.log('[Claude] interrupt() SIGINT 已发送到进程组 -PID:', -pid)
+    } catch (err) {
+      console.warn('[Claude] interrupt() SIGINT 发送失败，尝试强制终止:', err)
       try {
-        process.kill(this.process.pid!, 'SIGINT')
-      } catch {
         this.process.kill()
+      } catch (killErr) {
+        console.warn('[Claude] interrupt() 强制终止也失败:', killErr)
       }
     }
   }

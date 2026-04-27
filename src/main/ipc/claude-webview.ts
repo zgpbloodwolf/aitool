@@ -357,9 +357,16 @@ function handleIoMessage(channelId: string, message: unknown, _done?: boolean): 
 }
 
 function handleInterrupt(channelId: string): void {
+  // D-04: 诊断日志 — 记录中断请求的关键信息
+  safeLog('[ClaudeIPC] handleInterrupt 收到中断请求 — channelId:', channelId)
   const channel = channels.get(channelId)
-  if (!channel) return
+  if (!channel) {
+    safeLog('[ClaudeIPC] handleInterrupt 未找到频道 — channelId:', channelId, '活跃频道:', [...channels.keys()])
+    return
+  }
+  safeLog('[ClaudeIPC] handleInterrupt 找到频道，调用 interrupt() — channelId:', channelId, '进程运行状态:', channel.process.running)
   channel.process.interrupt()
+  safeLog('[ClaudeIPC] handleInterrupt interrupt() 已调用 — channelId:', channelId)
 }
 
 function sendToolPermissionRequest(
@@ -564,7 +571,8 @@ export function registerClaudeWebviewHandlers(): void {
         sendToWebview({ type: 'trigger_session_history' })
         return
       default:
-        safeLog('[ClaudeIPC] 未处理的消息类型:', msg.type)
+        // D-06: WARN 日志 — 记录未处理的消息类型，帮助发现 webview 消息类型不匹配
+        safeError('[ClaudeIPC] 未处理的消息类型:', msg.type, '完整消息:', JSON.stringify(msg).slice(0, 300))
     }
   })
 
