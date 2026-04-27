@@ -89,8 +89,7 @@ export class ClaudeProcessManager extends EventEmitter {
       stdio: ['pipe', 'pipe', 'pipe'],
       cwd,
       env,
-      windowsHide: true,
-      detached: true  // D-01: 创建独立进程组，使 SIGINT 可靠送达 claude.exe
+      windowsHide: true
     })
 
     this._running = true
@@ -167,7 +166,6 @@ export class ClaudeProcessManager extends EventEmitter {
   }
 
   interrupt(): void {
-    // D-05: 诊断日志 — 记录中断请求的状态
     console.log('[Claude] interrupt() 调用 — PID:', this.process?.pid, '_running:', this._running)
 
     if (!this.process || !this._running) {
@@ -177,11 +175,11 @@ export class ClaudeProcessManager extends EventEmitter {
 
     const pid = this.process.pid!
     try {
-      // D-01: 使用负 PID 向进程组发送 SIGINT
-      // detached: true 使 claude.exe 成为独立进程组组长
-      // process.kill(-pid, 'SIGINT') 映射到 GenerateConsoleCtrlEvent(CTRL_C_EVENT, pgid)
-      process.kill(-pid, 'SIGINT')
-      console.log('[Claude] interrupt() SIGINT 已发送到进程组 -PID:', -pid)
+      // Windows: process.kill(pid, 'SIGINT') 尝试 GenerateConsoleCtrlEvent(CTRL_C_EVENT, pid)
+      // 由于子进程不是进程组组长，libuv 会回退到 TerminateProcess 强制终止
+      // 这是 Windows 的平台限制 — 无法通过标准 API 向特定子进程发送优雅中断
+      process.kill(pid, 'SIGINT')
+      console.log('[Claude] interrupt() SIGINT 已发送 — PID:', pid)
     } catch (err) {
       console.warn('[Claude] interrupt() SIGINT 发送失败，尝试强制终止:', err)
       try {
