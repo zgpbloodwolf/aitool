@@ -36,6 +36,8 @@ interface Channel {
   totalOutputTokens: number
   // D-10: 最后一次启动时的 resumeSessionId，用于崩溃恢复
   lastSessionId: string | null
+  // 用户主动中断标记 — exit handler 不发崩溃通知，等用户发新消息时恢复
+  interrupted?: boolean
 }
 
 const channels = new Map<string, Channel>()
@@ -278,8 +280,15 @@ async function handleLaunchClaude(
 
   proc.on('exit', (code) => {
     safeLog('[ClaudeIPC] 进程已退出 [' + channelId + '] 退出码:', code)
-    // D-10: 崩溃恢复 — 保留 channel 记录用于恢复，通知渲染进程
     const channel = channels.get(channelId)
+
+    // 用户主动中断：不发崩溃通知，保留 channel 等待用户发新消息时恢复
+    if (channel?.interrupted) {
+      safeLog('[ClaudeIPC] 用户中断后进程退出 — channelId:', channelId)
+      return
+    }
+
+    // D-10: 崩溃恢复 — 保留 channel 记录用于恢复，通知渲染进程
     const canRecover = !!channel?.lastSessionId
     if (!persistent) {
       // 通知渲染进程进程已崩溃，提供恢复选项
@@ -343,6 +352,13 @@ function handleIoMessage(channelId: string, message: unknown, _done?: boolean): 
     return
   }
 
+  // 进程被中断后已停止 — 用 --resume 恢复，再发送消息
+  if (!channel.process.running && channel.interrupted && channel.lastSessionId) {
+    safeLog('[ClaudeIPC] 进程已停止，正在恢复 — channelId:', channelId)
+    resumeChannelAndSendMessage(channelId, channel, message)
+    return
+  }
+
   const msg = message as Record<string, unknown>
   if (msg?.type === 'user') {
     channel.process.send({
@@ -353,6 +369,50 @@ function handleIoMessage(channelId: string, message: unknown, _done?: boolean): 
     })
   } else {
     channel.process.send(message)
+  }
+}
+
+/** 中断后恢复：清理旧进程，用 --resume 重启，再发送用户消息 */
+async function resumeChannelAndSendMessage(
+  channelId: string,
+  channel: Channel,
+  message: unknown
+): Promise<void> {
+  const sessionId = channel.lastSessionId
+  if (!sessionId) return
+
+  // 清理旧进程
+  channel.process.removeAllListeners()
+  for (const resolver of channel.permissionResolvers.values()) {
+    clearTimeout(resolver.timeoutId)
+  }
+  channel.permissionResolvers.clear()
+  channel.sentPermissionRequests.clear()
+
+  // 删除 channel 以允许 handleLaunchClaude 创建新的
+  channels.delete(channelId)
+
+  try {
+    await handleLaunchClaude(channelId, currentCwd, 'default', '', sessionId)
+  } catch (err) {
+    safeError('[ClaudeIPC] 恢复进程失败:', err)
+    return
+  }
+
+  // 进程已重启，发送缓冲的消息
+  const newChannel = channels.get(channelId)
+  if (!newChannel) return
+
+  const msg = message as Record<string, unknown>
+  if (msg?.type === 'user') {
+    newChannel.process.send({
+      type: 'user',
+      session_id: newChannel.lastSessionId || '',
+      message: msg.message || msg,
+      parent_tool_use_id: null
+    })
+  } else {
+    newChannel.process.send(message)
   }
 }
 
@@ -377,9 +437,6 @@ function handleInterrupt(channelId: string): void {
     return
   }
 
-  // Windows: kill-and-resume 方案
-  // 根因：windowsHide:true → CREATE_NO_WINDOW → 无控制台 → SIGINT 无法送达
-  // 方案：终止进程 → 用 --resume 重启 → 会话上下文保留，用户可继续对话
   const sessionId = channel.lastSessionId
   if (!sessionId) {
     safeLog('[ClaudeIPC] handleInterrupt 无 sessionId，回退到强制中断')
@@ -387,7 +444,7 @@ function handleInterrupt(channelId: string): void {
     return
   }
 
-  safeLog('[ClaudeIPC] handleInterrupt 使用 kill-and-resume — sessionId:', sessionId)
+  safeLog('[ClaudeIPC] handleInterrupt 停止进程 — sessionId:', sessionId)
 
   // 1. 发送合成 result 消息，通知 webview 停止"生成中"状态
   sendToWebview({
@@ -405,18 +462,12 @@ function handleInterrupt(channelId: string): void {
     }
   })
 
-  // 2. 清理旧 channel（移除监听器防止 exit 事件触发崩溃通知）
-  channel.process.removeAllListeners()
-  channel.process.stop()
-  for (const resolver of channel.permissionResolvers.values()) {
-    clearTimeout(resolver.timeoutId)
-  }
-  channel.permissionResolvers.clear()
-  channels.delete(channelId)
+  // 2. 标记为用户主动中断（exit handler 会检查此标记，不发崩溃通知）
+  channel.interrupted = true
+  channel.pendingToolUse = null
 
-  // 3. 使用 --resume 重启进程，恢复会话上下文
-  safeLog('[ClaudeIPC] handleInterrupt 正在重启进程 — channelId:', channelId)
-  handleLaunchClaude(channelId, currentCwd, 'default', '', sessionId)
+  // 3. 停止进程（保留 channel，等用户发新消息时用 --resume 恢复）
+  channel.process.stop()
 }
 
 function sendToolPermissionRequest(
