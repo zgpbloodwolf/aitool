@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-04-24)
 ## Current Position
 
 Phase: 07-workflow-enhancement
-Plan: 1/3 in current phase
-Status: Plan 07-01 complete, ready for 07-02
-Last activity: 2026-04-27 -- Plan 07-01 Token 用量数据管线 complete
+Plan: 2/3 in current phase
+Status: Plan 07-02 complete, ready for 07-03
+Last activity: 2026-04-27 -- Plan 07-02 Windows 右键菜单集成 complete
 
-Progress: [########..] ~80% (phases 1-6 complete, phase 7 plan 1/3, 2 phases remaining)
+Progress: [########..] ~82% (phases 1-6 complete, phase 7 plan 2/3, 2 phases remaining)
 
 ## Performance Metrics
 
@@ -32,10 +32,10 @@ Progress: [########..] ~80% (phases 1-6 complete, phase 7 plan 1/3, 2 phases rem
 | 3. UX Enhancement | 6 | ~40 min | ~7 min |
 | 4. Quick Wins | 5 | ~18 min | ~3.6 min |
 | 5. 主题个性化 | 3 | ~16 min | ~5 min |
-| 7. 工作流增强 | 1 | ~7 min | ~7 min |
+| 7. 工作流增强 | 2 | ~10 min | ~5 min |
 
 **Recent Trend:**
-- Last 5 plans: 06-01 (5min), 06-02 (3min), 06-03 (3min), 06-04 (3min), 07-01 (7min)
+- Last 5 plans: 06-02 (3min), 06-03 (3min), 06-04 (3min), 07-01 (7min), 07-02 (3min)
 - Trend: Consistent execution, Phase 7 in progress
 
 *Updated after each plan completion*
@@ -52,6 +52,8 @@ Recent decisions affecting current work:
 - ClipboardPanel 使用 Teleport to body 避免 z-index 层叠问题，通过 App.vue handleShortcut 转发到 ChatPanel.toggleClipboardPanel
 - Ctrl+Shift+V 在主进程 before-input-event 拦截确保 iframe 焦点时也能触发
 - Token 用量持久化使用 JSON 文件 + Promise chain 写入队列，按天汇总，90 天自动清理
+- NSIS 安装脚本使用 SHCTX 自动路由注册表到 HKLM/HKCU，运行时检查仅写 HKCU
+- 单实例锁通过 requestSingleInstanceLock + second-instance argv 过滤实现右键菜单目录传递
 
 ### Pending Todos
 
@@ -74,5 +76,5 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-04-27
-Stopped at: Phase 07 Plan 01 complete — Token 用量数据管线
-Resume file: .planning/phases/07-workflow-enhancement/07-01-SUMMARY.md
+Stopped at: Phase 07 Plan 02 complete — Windows 右键菜单集成
+Resume file: .planning/phases/07-workflow-enhancement/07-02-SUMMARY.md

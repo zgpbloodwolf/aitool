@@ -192,7 +192,7 @@ Plans:
 
 Plans:
 - [x] 07-01-PLAN.md — Token 用量数据层 (持久化 + IPC + preload 桥接)
-- [ ] 07-02-PLAN.md — Windows 右键菜单集成 (NSIS + 单实例锁 + 注册表)
+- [x] 07-02-PLAN.md — Windows 右键菜单集成 (NSIS + 单实例锁 + 注册表)
 - [ ] 07-03-PLAN.md — Token 统计面板 UI (Chart.js + SettingsDrawer 集成)
 
 **Success Criteria**:
@@ -255,7 +255,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 4. Quick Wins | 5/5 | Complete | 2026-04-26 |
 | 5. 主题个性化 | 3/3 | Complete | 2026-04-26 |
 | 6. 知识管理 | 4/4 | Complete | 2026-04-26 |
-| 7. 工作流增强 | 1/3 | In progress | - |
+| 7. 工作流增强 | 2/3 | In progress | - |
 | 8. 高级特性 | 0/- | Not started | - |
 | 9. 远程访问 | 0/- | Not started | - |
 
