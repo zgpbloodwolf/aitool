@@ -1,5 +1,9 @@
 appId: com.aitools.desktop
 productName: AI Tools
+publish:
+  - provider: github
+    owner: zhengenpeng
+    repo: new-aitools
 directories:
   buildResources: build
 files:
@@ -12,13 +16,11 @@ files:
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
-extraResources:
-  - from: extension-host/
-    to: extension-host/
-    filter:
-      - '**/*'
 asarUnpack:
   - 'resources/**'
+extraFiles:
+  - from: "src/notification/index.html"
+    to: "notification/index.html"
 win:
   executableName: ai-tools
   target:

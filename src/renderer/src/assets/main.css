@@ -1,4 +1,5 @@
-:root {
+:root,
+[data-theme="dark"] {
   --bg-primary: #1e1e2e;
   --bg-secondary: #181825;
   --bg-tertiary: #313244;
@@ -11,10 +12,79 @@
   --success: #a6e3a1;
   --error: #f38ba8;
   --warning: #fab387;
+
+  /* 辅助变量 — 用于后续硬编码颜色迁移 */
+  --bg-hover: #45475a;
+  --border-hover: #585b70;
+  --bg-overlay: rgba(30, 30, 46, 0.95);
+  --bg-overlay-light: rgba(30, 30, 46, 0.8);
+  --error-hover: #eba0ac;
+  --warning-hover: #ffcba0;
+  --status-info-bg: rgba(137, 180, 250, 0.15);
+  --status-info-border: rgba(137, 180, 250, 0.3);
+  --status-info-text: #89b4fa;
+  --status-warning-bg: rgba(249, 226, 175, 0.15);
+  --status-warning-border: rgba(249, 226, 175, 0.3);
+  --status-warning-text: #f9e2af;
+  --status-error-bg: rgba(243, 139, 168, 0.15);
+  --status-error-border: rgba(243, 139, 168, 0.3);
+  --status-error-text: #f38ba8;
+  --overlay-backdrop: rgba(0, 0, 0, 0.4);
+  --dialog-backdrop: rgba(0, 0, 0, 0.5);
+  --shadow-color: rgba(0, 0, 0, 0.3);
+  --delete-hover-bg: rgba(243, 139, 168, 0.1);
+  --success-bg-subtle: rgba(166, 227, 161, 0.1);
+  --success-border-subtle: rgba(166, 227, 161, 0.3);
+  --error-bg-subtle: rgba(243, 139, 168, 0.1);
+  --error-border-subtle: rgba(243, 139, 168, 0.3);
+  --warning-bright: #f9e2af;
+
+  /* 非颜色变量 */
   --sidebar-width: 260px;
   --titlebar-height: 36px;
   --statusbar-height: 24px;
   --terminal-default-height: 200px;
+}
+
+[data-theme="light"] {
+  --bg-primary: #eff1f5;
+  --bg-secondary: #e6e9ef;
+  --bg-tertiary: #ccd0da;
+  --text-primary: #4c4f69;
+  --text-secondary: #5c5f77;
+  --text-muted: #9ca0b0;
+  --accent: #1e66f5;
+  --accent-hover: #209fb5;
+  --border: #bcc0cc;
+  --success: #40a02b;
+  --error: #d20f39;
+  --warning: #fe640b;
+
+  /* 辅助变量 Latte 值 */
+  --bg-hover: #bcc0cc;
+  --border-hover: #acb0be;
+  --bg-overlay: rgba(239, 241, 245, 0.95);
+  --bg-overlay-light: rgba(239, 241, 245, 0.8);
+  --error-hover: #e64553;
+  --warning-hover: #e64553;
+  --status-info-bg: rgba(30, 102, 245, 0.15);
+  --status-info-border: rgba(30, 102, 245, 0.3);
+  --status-info-text: #1e66f5;
+  --status-warning-bg: rgba(254, 100, 11, 0.15);
+  --status-warning-border: rgba(254, 100, 11, 0.3);
+  --status-warning-text: #fe640b;
+  --status-error-bg: rgba(210, 15, 57, 0.15);
+  --status-error-border: rgba(210, 15, 57, 0.3);
+  --status-error-text: #d20f39;
+  --overlay-backdrop: rgba(0, 0, 0, 0.25);
+  --dialog-backdrop: rgba(0, 0, 0, 0.35);
+  --shadow-color: rgba(0, 0, 0, 0.15);
+  --delete-hover-bg: rgba(210, 15, 57, 0.1);
+  --success-bg-subtle: rgba(64, 160, 43, 0.1);
+  --success-border-subtle: rgba(64, 160, 43, 0.3);
+  --error-bg-subtle: rgba(210, 15, 57, 0.1);
+  --error-border-subtle: rgba(210, 15, 57, 0.3);
+  --warning-bright: #df8e1d;
 }
 
 * {

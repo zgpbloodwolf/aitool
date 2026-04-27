@@ -1,25 +1,24 @@
 <script lang="ts">
 import { defineComponent } from 'vue'
-import { useWorkspaceStore, type FileEntry } from '../stores/workspace'
+import type { FileEntry } from '../stores/workspace'
 
 const FileTreeItem = defineComponent({
   name: 'FileTreeItem',
   props: {
     entry: { type: Object as () => FileEntry, required: true },
-    depth: { type: Number, required: true }
+    depth: { type: Number, required: true },
+    selectedFile: { type: String as () => string | null, default: null },
+    expandedDirs: { type: Object as () => Set<string>, required: true }
   },
-  setup() {
-    const workspace = useWorkspaceStore()
-    return { workspace }
-  },
+  emits: ['toggle-dir', 'select-file'],
   template: `
     <div
       class="file-entry"
-      :class="{ selected: workspace.selectedFile === entry.path }"
+      :class="{ selected: selectedFile === entry.path }"
       :style="{ paddingLeft: (12 + depth * 16) + 'px' }"
-      @click="entry.isDirectory ? workspace.toggleDir(entry.path) : workspace.selectFile(entry.path)"
+      @click="entry.isDirectory ? $emit('toggle-dir', entry.path) : $emit('select-file', entry.path)"
     >
-      <span class="icon">{{ entry.isDirectory ? (workspace.expandedDirs.has(entry.path) ? '\\u{1F4C2}' : '\\u{1F4C1}') : '\\u{1F4C4}' }}</span>
+      <span class="icon">{{ entry.isDirectory ? (expandedDirs.has(entry.path) ? '\\u{1F4C2}' : '\\u{1F4C1}') : '\\u{1F4C4}' }}</span>
       <span class="name">{{ entry.name }}</span>
     </div>
     <template v-if="entry.isDirectory && entry.children">
@@ -28,6 +27,10 @@ const FileTreeItem = defineComponent({
         :key="child.path"
         :entry="child"
         :depth="depth + 1"
+        :selected-file="selectedFile"
+        :expanded-dirs="expandedDirs"
+        @toggle-dir="$emit('toggle-dir', $event)"
+        @select-file="$emit('select-file', $event)"
       />
     </template>
   `
@@ -36,9 +39,14 @@ const FileTreeItem = defineComponent({
 export default defineComponent({
   name: 'FileTree',
   components: { FileTreeItem },
-  setup() {
-    const workspace = useWorkspaceStore()
-
+  props: {
+    files: { type: Array as () => FileEntry[], required: true },
+    expandedDirs: { type: Object as () => Set<string>, required: true },
+    selectedFile: { type: String as () => string | null, default: null },
+    filterText: { type: String, default: '' }
+  },
+  emits: ['toggle-dir', 'select-file'],
+  setup(props, { emit }) {
     function getIcon(entry: FileEntry): string {
       if (entry.isDirectory) return '\u{1F4C1}'
       const ext = entry.name.split('.').pop()?.toLowerCase()
@@ -55,18 +63,18 @@ export default defineComponent({
       return icons[ext ?? ''] ?? '\u{1F4C4}'
     }
 
-    return { workspace, getIcon, FileTreeItem }
+    return { getIcon, FileTreeItem, props, emit }
   },
   template: `
     <div class="file-tree">
-      <template v-for="entry in workspace.files" :key="entry.path">
+      <template v-for="entry in files" :key="entry.path">
         <div
           class="file-entry"
-          :class="{ selected: workspace.selectedFile === entry.path }"
+          :class="{ selected: selectedFile === entry.path }"
           :style="{ paddingLeft: '12px' }"
-          @click="entry.isDirectory ? workspace.toggleDir(entry.path) : workspace.selectFile(entry.path)"
+          @click="entry.isDirectory ? $emit('toggle-dir', entry.path) : $emit('select-file', entry.path)"
         >
-          <span class="icon">{{ entry.isDirectory ? (workspace.expandedDirs.has(entry.path) ? '\\u{1F4C2}' : '\\u{1F4C1}') : getIcon(entry) }}</span>
+          <span class="icon">{{ entry.isDirectory ? (expandedDirs.has(entry.path) ? '\\u{1F4C2}' : '\\u{1F4C1}') : getIcon(entry) }}</span>
           <span class="name">{{ entry.name }}</span>
         </div>
         <template v-if="entry.isDirectory && entry.children">
@@ -75,9 +83,16 @@ export default defineComponent({
             :key="child.path"
             :entry="child"
             :depth="1"
+            :selected-file="selectedFile"
+            :expanded-dirs="expandedDirs"
+            @toggle-dir="$emit('toggle-dir', $event)"
+            @select-file="$emit('select-file', $event)"
           />
         </template>
       </template>
+      <div v-if="files.length === 0 && filterText" class="filter-empty">
+        无匹配文件
+      </div>
     </div>
   `
 })
@@ -117,5 +132,12 @@ export default defineComponent({
   margin-left: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.filter-empty {
+  padding: 12px 16px;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
 }
 </style>

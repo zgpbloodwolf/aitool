@@ -1,9 +1,19 @@
 <script setup lang="ts">
+import { ref, onMounted } from 'vue'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useExtensionStore } from '../stores/extension'
 
 const workspace = useWorkspaceStore()
 const extStore = useExtensionStore()
+const version = window.api.getAppVersion()
+const modelName = ref<string | null>(null)
+
+onMounted(async () => {
+  try {
+    const model = await window.api.claudeGetModel()
+    if (model && model !== 'default') modelName.value = model
+  } catch { /* ignore */ }
+})
 </script>
 
 <template>
@@ -15,10 +25,11 @@ const extStore = useExtensionStore()
       <span v-else class="status-item">无扩展</span>
     </div>
     <div class="statusbar-right">
-      <span v-if="workspace.rootPath" class="status-item clickable" @click="workspace.openFolder()">
-        &#x1F4C1; {{ workspace.rootPath.split(/[\\/]/).pop() }}
+      <span v-if="modelName" class="status-item model-badge">{{ modelName }}</span>
+      <span v-if="workspace.activePath" class="status-item">
+        &#x1F4C1; {{ workspace.activePath.split(/[\\/]/).pop() }}
       </span>
-      <span class="status-item">v0.1.0</span>
+      <span class="status-item">v{{ version }}</span>
     </div>
   </div>
 </template>
@@ -60,5 +71,13 @@ const extStore = useExtensionStore()
 .status-item.clickable:hover {
   opacity: 1;
   text-decoration: underline;
+}
+
+.model-badge {
+  background: rgba(0, 0, 0, 0.15);
+  padding: 1px 8px;
+  border-radius: 3px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
 }
 </style>

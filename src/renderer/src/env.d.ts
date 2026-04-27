@@ -3,13 +3,15 @@
 export {}
 
 interface WindowApi {
+  getAppVersion: () => string
   selectFolder: () => Promise<string | null>
-  readDir: (
-    dirPath: string
-  ) => Promise<{ name: string; isDirectory: boolean; isFile: boolean }[]>
+  readDir: (dirPath: string) => Promise<{ name: string; isDirectory: boolean; isFile: boolean }[]>
   readFile: (filePath: string) => Promise<string>
   stat: (filePath: string) => Promise<{ isFile: boolean; isDirectory: boolean; size: number }>
-  getInstalledExtensions: () => Promise<{
+  startFileWatch: (projectId: string, dirPath: string) => Promise<boolean>
+  stopFileWatch: (projectId: string) => Promise<boolean>
+  onFileChanged: (projectId: string, callback: () => void) => () => void
+  getInstalledExtensions: () => Promise<Array<{
     id: string
     name: string
     version: string
@@ -17,7 +19,7 @@ interface WindowApi {
     publisher: string
     extensionPath: string
     iconPath?: string
-  }[]>
+  }>>
   activateExtension: (extensionId: string) => Promise<void>
   claudeStart: () => Promise<{ success: boolean; error?: string }>
   claudeSetCwd: (cwd: string) => Promise<{ success: boolean }>
@@ -30,11 +32,23 @@ interface WindowApi {
     fileSize: number
     summary: string | undefined
     gitBranch: string | undefined
-    isCurrentWorkspace: true
   }>>
+  claudeGetModel: () => Promise<string>
+  claudeDeleteSession: (sessionId: string) => Promise<boolean>
+  claudeGetContextUsage: () => Promise<Record<string, { inputTokens: number; outputTokens: number }>>
   claudeResumeSession: (channelId: string | null, sessionId: string) => Promise<{ success: boolean; error?: string; channelId?: string }>
+  claudeRecoverProcess: (channelId: string) => Promise<{ success: boolean; channelId?: string; error?: string }>
   claudeStartWebviewServer: (extensionPath: string) => Promise<number>
   claudeWebviewFromWebview: (msg: unknown) => void
+  getActiveSessionId: (channelId: string) => Promise<string | null>
+  showSaveDialog: (options: { defaultPath: string; title: string }) => Promise<{
+    canceled: boolean
+    filePath: string
+  }>
+  exportSession: (sessionId: string, title: string, savePath: string) => Promise<{
+    success: boolean
+    error?: string
+  }>
   wechatStartQrLogin: (baseUrl?: string) => Promise<{
     sessionKey: string
     qrUrl?: string
@@ -79,6 +93,32 @@ interface WindowApi {
   onClaudeError: (callback: (err: string) => void) => () => void
   onClaudeExit: (callback: (code: number | null) => void) => () => void
   onClaudeWebviewMessage: (callback: (msg: unknown) => void) => () => void
+  onProcessCrashed: (callback: (data: { channelId: string; canRecover: boolean }) => void) => () => void
+  onProcessUnresponsive: (callback: (data: { channelId: string }) => void) => () => void
+  onShortcut: (callback: (action: string) => void) => () => void
+  updateCloseBehavior: (behavior: 'minimize' | 'quit' | 'ask') => void
+  onCloseBehaviorChanged: (callback: (behavior: string) => void) => () => void
+  notificationAction: (notificationId: string, action: string, replyText?: string) => void
+  onNotificationFocusTab: (callback: (channelId: string) => void) => () => void
+  onNotificationPlaySound: (callback: (type: string) => void) => () => void
+  onThemeSystemChanged: (callback: (resolvedTheme: 'dark' | 'light') => void) => () => void
+  updateTheme: (mode: 'dark' | 'light' | 'system', resolved?: 'dark' | 'light') => void
+  send: (channel: string, ...args: unknown[]) => void
+  setZoomFactor: (factor: number) => void
+  updaterCheck: () => Promise<{ version: string | null; error?: string }>
+  updaterDownload: () => void
+  updaterInstall: () => void
+  onUpdaterAvailable: (
+    callback: (info: {
+      version: string
+      releaseNotes?: string | Array<{ version: string; note: string }>
+    }) => void
+  ) => () => void
+  onUpdaterProgress: (
+    callback: (data: { percent: number; bytesPerSecond: number }) => void
+  ) => () => void
+  onUpdaterDownloaded: (callback: () => void) => () => void
+  onUpdaterError: (callback: (data: { message: string }) => void) => () => void
 }
 
 declare global {

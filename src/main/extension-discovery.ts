@@ -1,15 +1,10 @@
 import { readdir, readFile, stat } from 'fs/promises'
 import { join } from 'path'
+import { app } from 'electron'
+import type { ExtensionInfo } from '../shared/types'
+import { setupExtension } from './claude/extension-setup'
 
-export interface DiscoveredExtension {
-  id: string
-  name: string
-  version: string
-  description: string
-  publisher: string
-  extensionPath: string
-  iconPath?: string
-}
+export type DiscoveredExtension = ExtensionInfo
 
 const TARGET_EXTENSIONS = new Set([
   'anthropic.claude-code',
@@ -17,27 +12,36 @@ const TARGET_EXTENSIONS = new Set([
   'openai.codex'
 ])
 
-async function findVSCodeExtensionsDir(): Promise<string> {
-  const homeDir = process.env.USERPROFILE || process.env.HOME || ''
-  const candidates = [
-    join(homeDir, '.vscode', 'extensions'),
-    join(homeDir, '.vscode-insiders', 'extensions')
-  ]
-
-  for (const dir of candidates) {
-    try {
-      await stat(dir)
-      return dir
-    } catch {
-      continue
-    }
-  }
-  return ''
+// 只搜索项目内置 extensions/ 目录
+function getExtensionsDir(): string {
+  const appPath = app.isPackaged ? process.resourcesPath : app.getAppPath()
+  return join(appPath, 'extensions')
 }
 
 export async function discoverExtensions(): Promise<DiscoveredExtension[]> {
-  const extensionsDir = await findVSCodeExtensionsDir()
-  if (!extensionsDir) return []
+  const extensionsDir = getExtensionsDir()
+
+  // 先尝试发现已有扩展
+  let extensions = await scanDir(extensionsDir)
+
+  // 没找到 claude-code 扩展 → 自动从内置 vsix 解压
+  if (!extensions.some(e => e.id === 'anthropic.claude-code')) {
+    console.log('[ExtensionDiscovery] 未找到 claude-code 扩展，尝试自动安装...')
+    const result = await setupExtension()
+    if (result) {
+      extensions = await scanDir(extensionsDir)
+    }
+  }
+
+  return extensions
+}
+
+async function scanDir(extensionsDir: string): Promise<DiscoveredExtension[]> {
+  try {
+    await stat(extensionsDir)
+  } catch {
+    return []
+  }
 
   const byId = new Map<string, DiscoveredExtension>()
 
@@ -74,7 +78,7 @@ export async function discoverExtensions(): Promise<DiscoveredExtension[]> {
       }
     }
   } catch {
-    return []
+    // ignore
   }
 
   return Array.from(byId.values())

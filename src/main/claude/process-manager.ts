@@ -12,9 +12,49 @@ export interface ClaudeProcessOptions {
 export class ClaudeProcessManager extends EventEmitter {
   private process: ChildProcess | null = null
   private _running = false
+  // D-11: 心跳检测定时器
+  private healthCheckInterval: ReturnType<typeof setInterval> | null = null
+  // D-10: 崩溃恢复支持 — 保存启动时的 resumeSessionId
+  private _resumeSessionId: string | null = null
 
   get running(): boolean {
     return this._running
+  }
+
+  /** D-10: 获取启动时的 resumeSessionId，用于崩溃后恢复 */
+  get resumeSessionId(): string | null {
+    return this._resumeSessionId
+  }
+
+  /**
+   * D-11: 启动心跳检测，定期检查 claude.exe 子进程是否存活
+   * @param onUnresponsive 进程挂死时的回调（exit 事件未触发但进程不存在）
+   * @param intervalMs 检测间隔，默认 30 秒
+   */
+  startHealthCheck(onUnresponsive: () => void, intervalMs = 30000): void {
+    this.stopHealthCheck()
+    this.healthCheckInterval = setInterval(() => {
+      // 没有进程在运行，跳过检测
+      if (!this.process || !this._running) return
+      try {
+        // process.kill(pid, 0) 不发送信号，仅检查进程是否存在
+        // 如果进程不存在会抛出异常
+        process.kill(this.process.pid!, 0)
+      } catch {
+        // 进程已死但 exit 事件未触发 → 挂死状态
+        if (this._running) {
+          onUnresponsive()
+        }
+      }
+    }, intervalMs)
+  }
+
+  /** D-11: 停止心跳检测 */
+  stopHealthCheck(): void {
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval)
+      this.healthCheckInterval = null
+    }
   }
 
   start(options: ClaudeProcessOptions): void {
@@ -22,13 +62,18 @@ export class ClaudeProcessManager extends EventEmitter {
       this.stop()
     }
 
+    // D-10: 保存 resumeSessionId 用于崩溃恢复
+    this._resumeSessionId = options.resumeSessionId || null
+
     const cwd = options.cwd || process.cwd()
     const env = { ...process.env, ...options.env } as Record<string, string>
 
     const args = [
-      '--output-format', 'stream-json',
+      '--output-format',
+      'stream-json',
       '--verbose',
-      '--input-format', 'stream-json',
+      '--input-format',
+      'stream-json',
       '--include-partial-messages',
       '--include-hook-events'
     ]
@@ -106,6 +151,8 @@ export class ClaudeProcessManager extends EventEmitter {
   }
 
   stop(): void {
+    // D-11: 停止进程时同时停止心跳检测
+    this.stopHealthCheck()
     if (this.process) {
       try {
         this.process.stdin?.end()

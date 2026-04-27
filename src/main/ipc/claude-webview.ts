@@ -1,26 +1,15 @@
 import { ipcMain, BrowserWindow } from 'electron'
+import { existsSync, readFileSync, statSync, writeFileSync } from 'fs'
+import { join } from 'path'
 import { ClaudeProcessManager } from '../claude/process-manager'
 import { resolveClaudeBinary } from '../claude/binary-resolver'
 import { startWebviewServer } from '../claude/webview-server'
-import { readFileSync, existsSync, readdirSync, writeFileSync, openSync, readSync, statSync, closeSync } from 'fs'
-import { join } from 'path'
-import { execFile } from 'child_process'
-
-// Safe logging that won't crash on EPIPE
-import { appendFileSync } from 'fs'
-const logPath = join(process.env.USERPROFILE || process.env.HOME || '/tmp', '.claude', 'aitools-dev.log')
-function safeLog(...args: unknown[]): void {
-  try {
-    const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ')
-    appendFileSync(logPath, `[INFO] ${msg}\n`)
-  } catch { /* ignore */ }
-}
-function safeError(...args: unknown[]): void {
-  try {
-    const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ')
-    appendFileSync(logPath, `[ERROR] ${msg}\n`)
-  } catch { /* ignore */ }
-}
+import { addAllowedRoot } from './filesystem'
+import { safeLog, safeError } from '../claude/logger'
+import { listSessions, getSessionMessages, deleteSession, exportSessionAsMarkdown } from '../claude/session-store'
+import { discoverSkills, runClaudeCliCommand } from '../claude/plugin-manager'
+import { handleGetMcpServers, handleMcpServerCommand } from '../claude/mcp-manager'
+import { notificationManager } from '../notification/notification-registry'
 
 interface PendingToolUse {
   id: string
@@ -32,6 +21,8 @@ interface PendingToolUse {
 interface PermissionResolver {
   resolve: (response: unknown) => void
   toolUseId: string
+  // D-12: 超时定时器 ID，channel 关闭时需要清理
+  timeoutId: ReturnType<typeof setTimeout>
 }
 
 interface Channel {
@@ -41,9 +32,14 @@ interface Channel {
   pendingToolUse: PendingToolUse | null
   permissionResolvers: Map<string, PermissionResolver>
   sentPermissionRequests: Set<string>
+  totalInputTokens: number
+  totalOutputTokens: number
+  // D-10: 最后一次启动时的 resumeSessionId，用于崩溃恢复
+  lastSessionId: string | null
 }
 
 const channels = new Map<string, Channel>()
+const launchingChannels = new Set<string>()
 let extensionPath: string | null = null
 let webviewInitialized = false
 let pendingMessages: unknown[] = []
@@ -57,14 +53,35 @@ interface ClaudeSettings {
   [key: string]: unknown
 }
 
+const SETTINGS_CACHE_TTL_MS = 5000
+let settingsCache: { data: ClaudeSettings; mtimeMs: number; timestamp: number } | null = null
+
 function getClaudeSettings(): ClaudeSettings {
   try {
     const homeDir = process.env.USERPROFILE || process.env.HOME || ''
     const settingsPath = join(homeDir, '.claude', 'settings.json')
-    if (existsSync(settingsPath)) {
-      return JSON.parse(readFileSync(settingsPath, 'utf-8'))
+
+    if (settingsCache && Date.now() - settingsCache.timestamp < SETTINGS_CACHE_TTL_MS) {
+      try {
+        const { mtimeMs } = statSync(settingsPath)
+        if (mtimeMs === settingsCache.mtimeMs) return settingsCache.data
+      } catch {
+        settingsCache = null
+        return {}
+      }
     }
-  } catch { /* ignore */ }
+
+    if (existsSync(settingsPath)) {
+      const content = readFileSync(settingsPath, 'utf-8')
+      const { mtimeMs } = statSync(settingsPath)
+      const data = JSON.parse(content)
+      settingsCache = { data, mtimeMs, timestamp: Date.now() }
+      return data
+    }
+    settingsCache = { data: {}, mtimeMs: 0, timestamp: Date.now() }
+  } catch {
+    /* ignore */
+  }
   return {}
 }
 
@@ -82,47 +99,6 @@ function getModelSetting(): string {
   return 'default'
 }
 
-interface SkillCommand {
-  name: string
-  description: string
-}
-
-function parseSkillMetadata(skillFile: string): { description: string } | null {
-  try {
-    const content = readFileSync(skillFile, 'utf-8')
-    const frontmatter = content.match(/^---\n([\s\S]*?)\n---/)?.[1]
-    let description = ''
-    if (frontmatter) {
-      const descLine = frontmatter.split('\n').find(l => l.startsWith('description:'))
-      if (descLine) description = descLine.replace(/^description:\s*"?/, '').replace(/"?\s*$/, '')
-    }
-    return { description }
-  } catch {
-    return null
-  }
-}
-
-function scanSkillsDir(skillsDir: string, namePrefix = ''): SkillCommand[] {
-  const commands: SkillCommand[] = []
-  if (!existsSync(skillsDir)) return commands
-
-  try {
-    const entries = readdirSync(skillsDir, { withFileTypes: true })
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue
-      const skillFile = join(skillsDir, entry.name, 'SKILL.md')
-      if (!existsSync(skillFile)) continue
-
-      const meta = parseSkillMetadata(skillFile)
-      if (meta) {
-        commands.push({ name: namePrefix + entry.name, description: meta.description })
-      }
-    }
-  } catch { /* skip unreadable dir */ }
-
-  return commands
-}
-
 function savePlanToMd(planText: string, cwd: string): void {
   try {
     const planPath = join(cwd, 'PLAN.md')
@@ -135,55 +111,7 @@ function savePlanToMd(planText: string, cwd: string): void {
   }
 }
 
-function discoverSkills(): SkillCommand[] {
-  const homeDir = process.env.USERPROFILE || process.env.HOME || ''
-  const claudeDir = join(homeDir, '.claude')
-  const commands: SkillCommand[] = []
-
-  // 1. User skills from ~/.claude/skills/
-  commands.push(...scanSkillsDir(join(claudeDir, 'skills')))
-
-  // 2. Plugin skills from ~/.claude/plugins/cache/<plugin-id>/skills/
-  const pluginCacheDir = join(claudeDir, 'plugins', 'cache')
-  if (existsSync(pluginCacheDir)) {
-    try {
-      const pluginDirs = readdirSync(pluginCacheDir, { withFileTypes: true })
-      for (const pluginDir of pluginDirs) {
-        if (!pluginDir.isDirectory()) continue
-        const pluginSkillsDir = join(pluginCacheDir, pluginDir.name, 'skills')
-        if (existsSync(pluginSkillsDir)) {
-          commands.push(...scanSkillsDir(pluginSkillsDir, pluginDir.name + ':'))
-        }
-      }
-    } catch { /* skip */ }
-  }
-
-  // 3. Plugin skills from npm global cache (e.g. zai-coding-plugins)
-  // Scan deeper: ~/.claude/plugins/cache/<marketplace>/<plugin>/skills/
-  if (existsSync(pluginCacheDir)) {
-    try {
-      const marketplaces = readdirSync(pluginCacheDir, { withFileTypes: true })
-      for (const market of marketplaces) {
-        if (!market.isDirectory()) continue
-        const marketDir = join(pluginCacheDir, market.name)
-        const subDirs = readdirSync(marketDir, { withFileTypes: true })
-        for (const sub of subDirs) {
-          if (!sub.isDirectory()) continue
-          const subSkillsDir = join(marketDir, sub.name, 'skills')
-          if (existsSync(subSkillsDir)) {
-            const pluginId = sub.name // e.g. "glm-plan-usage"
-            commands.push(...scanSkillsDir(subSkillsDir, pluginId + ':'))
-          }
-        }
-      }
-    } catch { /* skip */ }
-  }
-
-  safeLog('[ClaudeIPC] 已发现技能:', commands.length)
-  return commands
-}
-
-export async function getExtensionPath(): Promise<string | null> {
+async function getExtensionPath(): Promise<string | null> {
   if (extensionPath) return extensionPath
   const { discoverExtensions } = await import('../extension-discovery')
   const extensions = await discoverExtensions()
@@ -202,29 +130,47 @@ function sendToWebview(msg: unknown): void {
 
 // --- Multi-channel process management ---
 
-async function handleLaunchClaude(channelId: string, cwd: string, _permissionMode: string, _thinkingLevel: string, resumeSessionId?: string, persistent?: boolean): Promise<void> {
-  if (channels.has(channelId)) {
-    safeLog('[ClaudeIPC] 频道已存在:', channelId)
+async function handleLaunchClaude(
+  channelId: string,
+  cwd: string,
+  _permissionMode: string,
+  _thinkingLevel: string,
+  resumeSessionId?: string,
+  persistent?: boolean
+): Promise<void> {
+  if (channels.has(channelId) || launchingChannels.has(channelId)) {
+    safeLog('[ClaudeIPC] 频道已存在或正在启动:', channelId)
     return
   }
 
+  launchingChannels.add(channelId)
+
   const binaryPath = await resolveClaudeBinary()
   if (!binaryPath) {
+    launchingChannels.delete(channelId)
     sendToWebview({ type: 'close_channel', channelId, error: '未找到 Claude Code CLI' })
     return
   }
+
+  // 从 settings.json 读取 env 并注入到 claude.exe 进程（与 VSCode 行为一致）
+  const settings = getClaudeSettings()
+  const procEnv: Record<string, string> = settings.env || {}
 
   safeLog('[ClaudeIPC] 正在为频道启动 claude.exe:', channelId)
   const proc = new ClaudeProcessManager()
 
   proc.on('message', (msg: Record<string, unknown>) => {
-    safeLog('[ClaudeIPC] claude.exe 输出 [' + channelId + ']:', JSON.stringify(msg).slice(0, 150))
+    safeLog(
+      '[ClaudeIPC] claude.exe 输出 [' + channelId + ']:',
+      JSON.stringify(msg).slice(0, msg.type === 'result' ? 1000 : 150)
+    )
 
-    // Capture assistant text in plan mode for PLAN.md
     const channel = channels.get(channelId)
     if (channel && channel.permissionMode === 'plan') {
       if (msg.type === 'assistant') {
-        const content = (msg.message as Record<string, unknown>)?.content as Array<Record<string, unknown>> | undefined
+        const content = (msg.message as Record<string, unknown>)?.content as
+          | Array<Record<string, unknown>>
+          | undefined
         if (content) {
           for (const block of content) {
             if (block.type === 'text' && typeof block.text === 'string') {
@@ -238,9 +184,7 @@ async function handleLaunchClaude(channelId: string, cwd: string, _permissionMod
       }
     }
 
-    // --- Tool permission detection for interactive tools ---
     if (channel) {
-      // Streaming events: content_block_start/delta/stop
       if (msg.type === 'content_block_start') {
         const block = msg.content_block as Record<string, unknown> | undefined
         if (block?.type === 'tool_use') {
@@ -268,49 +212,127 @@ async function handleLaunchClaude(channelId: string, cwd: string, _permissionMod
         }
       }
 
-      // Complete assistant messages with tool_use content blocks
       if (msg.type === 'assistant') {
-        const content = (msg.message as Record<string, unknown>)?.content as Array<Record<string, unknown>> | undefined
+        const content = (msg.message as Record<string, unknown>)?.content as
+          | Array<Record<string, unknown>>
+          | undefined
         if (content) {
           for (const block of content) {
             if (block.type === 'tool_use' && block.id) {
-              sendToolPermissionRequest(channel, channelId, block.id as string, block.name as string, JSON.stringify(block.input || {}))
+              sendToolPermissionRequest(
+                channel,
+                channelId,
+                block.id as string,
+                block.name as string,
+                JSON.stringify(block.input || {})
+              )
             }
           }
         }
       }
     }
 
-    const tagged = { type: 'io_message', channelId, message: msg }
+    // 追踪 token 用量
+    if (msg.type === 'stream_event') {
+      const usage = (msg.event as Record<string, unknown>)?.usage as
+        | { input_tokens?: number; output_tokens?: number }
+        | undefined
+      if (usage) {
+        const ch = channels.get(channelId)
+        if (ch) {
+          if (usage.input_tokens) ch.totalInputTokens = usage.input_tokens
+          if (usage.output_tokens) ch.totalOutputTokens = usage.output_tokens
+        }
+      }
+    }
+
+    // D-10: 从 system init 消息中提取 session_id 用于崩溃恢复
+    if (msg.type === 'system' && msg.subtype === 'init' && typeof msg.session_id === 'string') {
+      const ch = channels.get(channelId)
+      if (ch) ch.lastSessionId = msg.session_id as string
+    }
+
+    let messageCopy: typeof msg
+    try {
+      messageCopy = structuredClone(msg)
+    } catch {
+      messageCopy = msg
+    }
+    const tagged = { type: 'io_message', channelId, message: messageCopy }
     if (!webviewInitialized) {
       pendingMessages.push(tagged)
       return
     }
     sendToWebview(tagged)
+
+    // 通知触发：回复完成
+    if (msg.type === 'result' && notificationManager) {
+      notificationManager.show({
+        type: 'complete',
+        title: '回复完成',
+        body: 'Claude 已完成回复',
+        channelId
+      })
+    }
   })
 
   proc.on('exit', (code) => {
     safeLog('[ClaudeIPC] 进程已退出 [' + channelId + '] 退出码:', code)
-    channels.delete(channelId)
+    // D-10: 崩溃恢复 — 保留 channel 记录用于恢复，通知渲染进程
+    const channel = channels.get(channelId)
+    const canRecover = !!channel?.lastSessionId
     if (!persistent) {
-      sendToWebview({ type: 'close_channel', channelId })
+      // 通知渲染进程进程已崩溃，提供恢复选项
+      const win = BrowserWindow.getAllWindows()[0]
+      if (win) {
+        win.webContents.send('claude:process-crashed', { channelId, canRecover })
+      }
+      // 不立即从 channels 中删除（保持 channel 记录用于恢复）
+      // channel 会在 handleCloseChannel 或恢复成功后清理
+    } else {
+      // persistent channel 保持原有行为
+      channels.delete(channelId)
     }
   })
 
   proc.on('error', (err) => {
     safeError('[ClaudeIPC] 进程错误 [' + channelId + ']:', err)
+    // 通知触发：进程错误
+    if (notificationManager) {
+      notificationManager.show({
+        type: 'error',
+        title: '进程错误',
+        body: String(err).slice(0, 100),
+        channelId
+      })
+    }
     channels.delete(channelId)
     sendToWebview({ type: 'close_channel', channelId, error: String(err) })
   })
 
-  proc.start({ claudePath: binaryPath, cwd: cwd || process.cwd(), resumeSessionId })
+  proc.start({ claudePath: binaryPath, cwd: cwd || process.cwd(), resumeSessionId, env: procEnv })
   channels.set(channelId, {
     process: proc,
     permissionMode: 'default',
     planText: '',
     pendingToolUse: null,
     permissionResolvers: new Map(),
-    sentPermissionRequests: new Set()
+    sentPermissionRequests: new Set(),
+    totalInputTokens: 0,
+    totalOutputTokens: 0,
+    // D-10: 保存 sessionId 用于崩溃恢复
+    lastSessionId: resumeSessionId || null
+  })
+  launchingChannels.delete(channelId)
+
+  // D-11: 启动心跳检测
+  proc.startHealthCheck(() => {
+    // D-11: 进程无响应回调 — 通知渲染进程
+    safeLog('[ClaudeIPC] 进程无响应 [' + channelId + ']')
+    const win = BrowserWindow.getAllWindows()[0]
+    if (win) {
+      win.webContents.send('claude:process-unresponsive', { channelId })
+    }
   })
 }
 
@@ -340,40 +362,59 @@ function handleInterrupt(channelId: string): void {
   channel.process.interrupt()
 }
 
-function sendToolPermissionRequest(channel: Channel, channelId: string, toolUseId: string, toolName: string, inputJson: string): void {
+function sendToolPermissionRequest(
+  channel: Channel,
+  channelId: string,
+  toolUseId: string,
+  toolName: string,
+  inputJson: string
+): void {
   if (channel.sentPermissionRequests.has(toolUseId)) return
   channel.sentPermissionRequests.add(toolUseId)
 
   let inputs: unknown = {}
   try {
     inputs = JSON.parse(inputJson || '{}')
-  } catch { /* use empty */ }
+  } catch {
+    /* use empty */
+  }
 
   safeLog('[ClaudeIPC] 检测到 tool_use:', toolName, 'id:', toolUseId)
 
   const requestId = `perm_${Date.now()}_${Math.random().toString(36).slice(2)}`
 
+  // D-12: 创建 resolver 占位，setTimeout 后更新 timeoutId
+  const resolver: PermissionResolver = {
+    resolve: () => {},
+    toolUseId,
+    timeoutId: null as unknown as ReturnType<typeof setTimeout>
+  }
+
   const promise = new Promise<unknown>((resolve) => {
-    channel.permissionResolvers.set(requestId, { resolve, toolUseId })
+    resolver.resolve = resolve
   })
 
-  // Timeout: auto-deny after 5 minutes
-  const timeout = setTimeout(() => {
+  // D-12: 超时定时器 — 5 分钟后自动拒绝
+  resolver.timeoutId = setTimeout(() => {
     if (channel.permissionResolvers.has(requestId)) {
       channel.permissionResolvers.delete(requestId)
       safeLog('[ClaudeIPC] 工具权限请求超时:', requestId)
-      // Send denial to claude.exe
       channel.process.send({
         type: 'user',
         session_id: '',
         message: {
           role: 'user',
-          content: [{ type: 'tool_result', tool_use_id: toolUseId, content: '权限请求超时', is_error: true }]
+          content: [
+            { type: 'tool_result', tool_use_id: toolUseId, content: '权限请求超时', is_error: true }
+          ]
         },
         parent_tool_use_id: toolUseId
       })
     }
   }, 300000)
+
+  // 将 resolver 存入 channel（包含 timeoutId 供后续清理）
+  channel.permissionResolvers.set(requestId, resolver)
 
   sendToWebview({
     type: 'request',
@@ -387,11 +428,25 @@ function sendToolPermissionRequest(channel: Channel, channelId: string, toolUseI
     }
   })
 
+  // 通知触发：工具权限请求
+  if (notificationManager) {
+    notificationManager.show({
+      type: 'permission',
+      title: '工具权限请求',
+      body: `Claude 请求使用工具: ${toolName}`,
+      channelId,
+      requestId,
+      toolName
+    })
+  }
+
   promise.then((response) => {
-    clearTimeout(timeout)
+    clearTimeout(resolver.timeoutId)
     channel.permissionResolvers.delete(requestId)
 
-    const resp = response as { result?: { behavior?: string; updatedInput?: unknown; message?: string } } | undefined
+    const resp = response as
+      | { result?: { behavior?: string; updatedInput?: unknown; message?: string } }
+      | undefined
     const result = resp?.result
 
     safeLog('[ClaudeIPC] 工具权限响应:', result?.behavior, '对应:', toolUseId)
@@ -403,11 +458,13 @@ function sendToolPermissionRequest(channel: Channel, channelId: string, toolUseI
         session_id: '',
         message: {
           role: 'user',
-          content: [{
-            type: 'tool_result',
-            tool_use_id: toolUseId,
-            content: typeof answer === 'string' ? answer : JSON.stringify(answer)
-          }]
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: toolUseId,
+              content: typeof answer === 'string' ? answer : JSON.stringify(answer)
+            }
+          ]
         },
         parent_tool_use_id: toolUseId
       })
@@ -417,12 +474,14 @@ function sendToolPermissionRequest(channel: Channel, channelId: string, toolUseI
         session_id: '',
         message: {
           role: 'user',
-          content: [{
-            type: 'tool_result',
-            tool_use_id: toolUseId,
-            content: result?.message || '用户已拒绝',
-            is_error: true
-          }]
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: toolUseId,
+              content: result?.message || '用户已拒绝',
+              is_error: true
+            }
+          ]
         },
         parent_tool_use_id: toolUseId
       })
@@ -434,6 +493,11 @@ function handleCloseChannel(channelId: string): void {
   const channel = channels.get(channelId)
   if (!channel) return
   safeLog('[ClaudeIPC] 正在关闭频道:', channelId)
+  // D-12: 清理所有 pending 的超时定时器
+  for (const resolver of channel.permissionResolvers.values()) {
+    clearTimeout(resolver.timeoutId)
+  }
+  channel.permissionResolvers.clear()
   channel.process.stop()
   channels.delete(channelId)
 }
@@ -441,30 +505,26 @@ function handleCloseChannel(channelId: string): void {
 // --- IPC Registration ---
 
 export function registerClaudeWebviewHandlers(): void {
-  // claude:start is now a no-op — sessions are created on demand via launch_claude
   ipcMain.handle('claude:start', async () => {
     safeLog('[ClaudeIPC] claude:start 已调用（空操作，会话按需创建）')
     return { success: true }
   })
 
-  // Update cwd when user selects a workspace folder
   ipcMain.handle('claude:set-cwd', (_event, cwd: string) => {
     currentCwd = cwd
+    addAllowedRoot(cwd)
     safeLog('[ClaudeIPC] 工作目录已更新:', cwd)
     return { success: true }
   })
 
-  // Messages FROM webview → main process
   ipcMain.on('claude-webview:from-webview', (_event, msg) => {
     safeLog('[ClaudeIPC] 来自 webview:', JSON.stringify(msg).slice(0, 200))
 
-    // Request type messages handled locally regardless of process state
     if (msg.type === 'request') {
       handleWebviewRequest(msg)
       return
     }
 
-    // Response type messages (replies to our tool_permission_request, etc.)
     if (msg.type === 'response') {
       const requestId = msg.requestId as string | undefined
       if (requestId) {
@@ -481,10 +541,15 @@ export function registerClaudeWebviewHandlers(): void {
       return
     }
 
-    // Channel-based message routing
     switch (msg.type) {
       case 'launch_claude':
-        handleLaunchClaude(msg.channelId, msg.cwd, msg.permissionMode, msg.thinkingLevel, msg.resumeSessionId)
+        handleLaunchClaude(
+          msg.channelId,
+          msg.cwd,
+          msg.permissionMode,
+          msg.thinkingLevel,
+          msg.resumeSessionId
+        )
         return
       case 'io_message':
         handleIoMessage(msg.channelId, msg.message, msg.done)
@@ -503,15 +568,12 @@ export function registerClaudeWebviewHandlers(): void {
     }
   })
 
-  // Legacy simple text message
   ipcMain.on('claude:send', (_event, text: string) => {
-    // Send to first active channel
     const firstChannel = channels.values().next().value
     firstChannel?.process.sendUserMessage(text)
   })
 
   ipcMain.on('claude:stop', () => {
-    // Stop all channels
     for (const channel of channels.values()) {
       channel.process.stop()
     }
@@ -531,266 +593,104 @@ export function registerClaudeWebviewHandlers(): void {
     return port
   })
 
-  // Direct session listing (not via webview message flow)
   ipcMain.handle('claude:list-sessions', async () => {
-    const sessionDir = getProjectSessionDir(currentCwd)
-    if (!sessionDir) return []
-
-    const sessions: Array<{
-      id: string
-      lastModified: number
-      fileSize: number
-      summary: string | undefined
-      gitBranch: string | undefined
-      isCurrentWorkspace: true
-    }> = []
-
-    try {
-      const entries = readdirSync(sessionDir)
-      for (const entry of entries) {
-        if (!entry.endsWith('.jsonl')) continue
-        if (entry.startsWith('agent-')) continue
-        const sessionId = entry.replace('.jsonl', '')
-        if (!UUID_RE.test(sessionId)) continue
-
-        const filePath = join(sessionDir, entry)
-        try {
-          const { head, tail, mtime, size } = readFileHeadAndTail(filePath)
-          const fullText = head + '\n' + tail
-          const summary = extractFirstUserPrompt(head) || extractStringValue(tail, 'customTitle') || extractStringValue(fullText, 'aiTitle')
-          const gitBranch = extractStringValue(fullText, 'gitBranch')
-          sessions.push({ id: sessionId, lastModified: mtime, fileSize: size, summary, gitBranch, isCurrentWorkspace: true })
-        } catch { /* skip */ }
-      }
-    } catch { /* skip */ }
-
-    sessions.sort((a, b) => b.lastModified - a.lastModified)
-    safeLog('[ClaudeIPC] ChatPanel 列出的会话:', sessions.length)
-    return sessions
+    return await listSessions(currentCwd)
   })
 
-  // Resume a session in an existing channel
+  ipcMain.handle('claude:get-model', async () => {
+    return getModelSetting()
+  })
+
+  ipcMain.handle('claude:get-context-usage', async () => {
+    const result: Record<string, { inputTokens: number; outputTokens: number }> = {}
+    for (const [channelId, ch] of channels) {
+      result[channelId] = { inputTokens: ch.totalInputTokens, outputTokens: ch.totalOutputTokens }
+    }
+    return result
+  })
+
+  ipcMain.handle('claude:delete-session', async (_event, sessionId: string) => {
+    return await deleteSession(sessionId, currentCwd)
+  })
+
   ipcMain.handle('claude:resume-session', async (_event, channelId: string, sessionId: string) => {
     safeLog('[ClaudeIPC] 正在恢复会话:', sessionId, '频道:', channelId)
 
-    // Stop existing channel (if any) without sending close_channel to webview
     if (channelId && channels.has(channelId)) {
       const channel = channels.get(channelId)!
-      // Remove listeners to prevent close_channel from being sent on exit
       channel.process.removeAllListeners()
       channel.process.stop()
       channels.delete(channelId)
     }
 
-    // Generate a channelId if none provided
-    const effectiveChannelId = channelId || `ch_${Date.now()}_${Math.random().toString(36).slice(2)}`
+    const effectiveChannelId =
+      channelId || `ch_${Date.now()}_${Math.random().toString(36).slice(2)}`
 
-    // Read session JSONL and replay messages to webview for display
-    const sessionDir = getProjectSessionDir(currentCwd)
-    if (sessionDir) {
-      const filePath = join(sessionDir, `${sessionId}.jsonl`)
-      if (existsSync(filePath)) {
-        try {
-          const content = readFileSync(filePath, 'utf8')
-          let count = 0
-          for (const line of content.split('\n')) {
-            if (!line.trim()) continue
-            try {
-              const obj = JSON.parse(line)
-              if (obj.isSidechain || obj.isMeta || obj.isCompactSummary) continue
-              if (obj.type === 'user' || obj.type === 'assistant' || obj.type === 'system') {
-                sendToWebview({ type: 'io_message', channelId: effectiveChannelId, message: obj })
-                count++
-              }
-            } catch { /* skip malformed */ }
-          }
-          safeLog('[ClaudeIPC] 已重放', count, '条消息，会话:', sessionId)
-        } catch (e) {
-          safeError('[ClaudeIPC] 重放会话失败:', e)
-        }
-      }
+    const messages = await getSessionMessages(sessionId, currentCwd)
+    for (const obj of messages) {
+      sendToWebview({ type: 'io_message', channelId: effectiveChannelId, message: obj })
     }
+    safeLog('[ClaudeIPC] 已重放', messages.length, '条消息，会话:', sessionId)
 
-    // Start new process with --resume, persistent=true to keep channel view alive
     await handleLaunchClaude(effectiveChannelId, currentCwd, 'default', '', sessionId, true)
     return { success: true, channelId: effectiveChannelId }
   })
-}
 
-// --- Webview Request Handler ---
-
-// --- Session History ---
-
-function encodeProjectPath(cwd: string): string {
-  let encoded = cwd.replace(/[^a-zA-Z0-9]/g, '-')
-  if (encoded.length <= 200) return encoded
-  const hash = Math.abs(
-    Array.from(cwd).reduce((acc, ch) => ((acc << 5) - acc + ch.charCodeAt(0)) | 0, 0)
-  ).toString(36)
-  return `${encoded.slice(0, 200)}-${hash}`
-}
-
-function getProjectSessionDir(cwd: string): string | null {
-  const homeDir = process.env.USERPROFILE || process.env.HOME || ''
-  const claudeDir = join(homeDir, '.claude', 'projects')
-  const encoded = encodeProjectPath(cwd)
-  const dir = join(claudeDir, encoded)
-  if (existsSync(dir)) return dir
-  // Try lowercase drive letter variant (E:\ → e-\)
-  if (/^[A-Z]:/.test(cwd)) {
-    const lower = encodeProjectPath(cwd[0].toLowerCase() + cwd.slice(1))
-    const dirLower = join(claudeDir, lower)
-    if (existsSync(dirLower)) return dirLower
-  }
-  return null
-}
-
-interface HeadTail {
-  head: string
-  tail: string
-  mtime: number
-  size: number
-}
-
-const JSONL_CHUNK = 65536
-
-function readFileHeadAndTail(filePath: string): HeadTail {
-  const stat = statSync(filePath)
-  const fd = openSync(filePath, 'r')
-  try {
-    const headBuf = Buffer.alloc(JSONL_CHUNK)
-    const headBytes = readSync(fd, headBuf, 0, JSONL_CHUNK, 0)
-    const head = headBuf.toString('utf8', 0, headBytes)
-    let tail = ''
-    if (stat.size > JSONL_CHUNK) {
-      const tailBuf = Buffer.alloc(JSONL_CHUNK)
-      const tailBytes = readSync(fd, tailBuf, 0, JSONL_CHUNK, stat.size - JSONL_CHUNK)
-      tail = tailBuf.toString('utf8', 0, tailBytes)
+  // D-10: 崩溃恢复 — 渲染进程调用此 IPC 恢复已崩溃的 channel
+  ipcMain.handle('claude:recover-process', async (_event, channelId: string) => {
+    safeLog('[ClaudeIPC] 正在恢复崩溃进程，频道:', channelId)
+    const channel = channels.get(channelId)
+    if (!channel) {
+      return { success: false, error: '频道不存在' }
     }
-    return { head, tail, mtime: stat.mtimeMs, size: stat.size }
-  } finally {
-    closeSync(fd)
-  }
-}
 
-function extractFirstUserPrompt(text: string): string | undefined {
-  const lines = text.split('\n')
-  for (const line of lines) {
-    if (!line.includes('"type":"user"') && !line.includes('"type": "user"')) continue
+    const sessionId = channel.lastSessionId
+    if (!sessionId) {
+      channels.delete(channelId)
+      return { success: false, error: '无可恢复的会话 ID' }
+    }
+
+    // 清理旧 channel（停止心跳和清理定时器）
+    for (const resolver of channel.permissionResolvers.values()) {
+      clearTimeout(resolver.timeoutId)
+    }
+    channel.permissionResolvers.clear()
+    channel.process.removeAllListeners()
+    channel.process.stop()
+    channels.delete(channelId)
+
+    // 使用保存的 sessionId 重新启动
     try {
-      const obj = JSON.parse(line)
-      if (obj.isSidechain || obj.isMeta || obj.isCompactSummary) continue
-      const content = obj.message?.content
-      if (!Array.isArray(content)) continue
-      for (const block of content) {
-        if (block.type === 'text' && typeof block.text === 'string' && block.text.trim()) {
-          return block.text.length > 200 ? block.text.slice(0, 200) + '...' : block.text
-        }
-      }
-    } catch { /* skip malformed */ }
-  }
-  return undefined
-}
-
-function extractStringValue(text: string, key: string): string | undefined {
-  const marker = `"${key}":"`
-  const idx = text.indexOf(marker)
-  if (idx === -1) return undefined
-  const start = idx + marker.length
-  const end = text.indexOf('"', start)
-  if (end === -1) return undefined
-  return text.slice(start, end)
-}
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-
-function handleListSessionsRequest(requestId: string | undefined, cwd: string): void {
-  const sessionDir = getProjectSessionDir(cwd)
-  if (!sessionDir) {
-    sendToWebview({ requestId, type: 'response', response: { type: 'list_sessions_response', sessions: [] } })
-    return
-  }
-
-  const sessions: Array<{
-    id: string
-    lastModified: number
-    fileSize: number
-    summary: string | undefined
-    gitBranch: string | undefined
-    worktree: undefined
-    isCurrentWorkspace: true
-  }> = []
-
-  try {
-    const entries = readdirSync(sessionDir)
-    for (const entry of entries) {
-      if (!entry.endsWith('.jsonl')) continue
-      if (entry.startsWith('agent-')) continue
-      const sessionId = entry.replace('.jsonl', '')
-      if (!UUID_RE.test(sessionId)) continue
-
-      const filePath = join(sessionDir, entry)
-      try {
-        const { head, tail, mtime, size } = readFileHeadAndTail(filePath)
-        const fullText = head + '\n' + tail
-        const summary = extractFirstUserPrompt(head) || extractStringValue(tail, 'customTitle') || extractStringValue(fullText, 'aiTitle')
-        const gitBranch = extractStringValue(fullText, 'gitBranch')
-        sessions.push({ id: sessionId, lastModified: mtime, fileSize: size, summary, gitBranch, worktree: undefined, isCurrentWorkspace: true })
-      } catch {
-        safeError('[ClaudeIPC] 读取会话失败:', entry)
-      }
+      await handleLaunchClaude(channelId, currentCwd, 'default', '', sessionId)
+      return { success: true, channelId }
+    } catch (e) {
+      return { success: false, error: String(e) }
     }
-  } catch {
-    safeError('[ClaudeIPC] 列出会话失败，目录:', sessionDir)
-  }
+  })
 
-  sessions.sort((a, b) => b.lastModified - a.lastModified)
-  safeLog('[ClaudeIPC] 已列出会话:', sessions.length)
-  sendToWebview({ requestId, type: 'response', response: { type: 'list_sessions_response', sessions } })
-}
+  // UX-07: 获取活跃标签对应的会话 ID
+  ipcMain.handle('claude:get-active-session-id', async (_event, channelId: string) => {
+    const channel = channels.get(channelId)
+    return channel?.lastSessionId || null
+  })
 
-function handleGetSessionRequest(requestId: string | undefined, sessionId: string | undefined, cwd: string): void {
-  if (!sessionId) {
-    sendToWebview({ requestId, type: 'response', response: { type: 'get_session_response', messages: [] } })
-    return
-  }
-
-  const sessionDir = getProjectSessionDir(cwd)
-  if (!sessionDir) {
-    sendToWebview({ requestId, type: 'response', response: { type: 'get_session_response', messages: [] } })
-    return
-  }
-
-  const filePath = join(sessionDir, `${sessionId}.jsonl`)
-  if (!existsSync(filePath)) {
-    sendToWebview({ requestId, type: 'response', response: { type: 'get_session_response', messages: [] } })
-    return
-  }
-
-  const messages: unknown[] = []
-  try {
-    const content = readFileSync(filePath, 'utf8')
-    for (const line of content.split('\n')) {
-      if (!line.trim()) continue
-      try {
-        const obj = JSON.parse(line)
-        if (obj.isSidechain || obj.isMeta) continue
-        if (obj.type === 'user' || obj.type === 'assistant' || obj.type === 'system') {
-          messages.push(obj)
-        }
-      } catch { /* skip malformed */ }
+  // UX-07: 导出会话为 Markdown 文件
+  ipcMain.handle(
+    'claude:export-session',
+    async (_event, sessionId: string, title: string, savePath: string) => {
+      safeLog('[ClaudeIPC] 正在导出会话:', sessionId)
+      return await exportSessionAsMarkdown(sessionId, title, savePath, currentCwd)
     }
-  } catch {
-    safeError('[ClaudeIPC] 读取会话文件失败:', filePath)
-  }
-
-  safeLog('[ClaudeIPC] 已加载会话:', sessionId, '消息数:', messages.length)
-  sendToWebview({ requestId, type: 'response', response: { type: 'get_session_response', messages } })
+  )
 }
 
 // --- Webview Request Handler ---
 
-async function handleWebviewRequest(msg: { requestId?: string; channelId?: string; request?: { type: string; [key: string]: unknown } }): Promise<void> {
+async function handleWebviewRequest(msg: {
+  requestId?: string
+  channelId?: string
+  request?: { type: string; [key: string]: unknown }
+}): Promise<void> {
   const requestType = msg.request?.type
   const requestId = msg.requestId
   const channelId = msg.channelId
@@ -852,7 +752,6 @@ async function handleWebviewRequest(msg: { requestId?: string; channelId?: strin
           }
         }
       })
-      // Flush queued messages
       for (const pending of pendingMessages) {
         sendToWebview(pending)
       }
@@ -901,12 +800,22 @@ async function handleWebviewRequest(msg: { requestId?: string; channelId?: strin
       break
     }
     case 'list_sessions_request': {
-      handleListSessionsRequest(requestId, currentCwd)
+      const sessions = await listSessions(currentCwd)
+      sendToWebview({
+        requestId,
+        type: 'response',
+        response: { type: 'list_sessions_response', sessions }
+      })
       break
     }
     case 'get_session_request': {
       const sessionId = msg.request?.sessionId as string | undefined
-      handleGetSessionRequest(requestId, sessionId, currentCwd)
+      const messages = await getSessionMessages(sessionId || '', currentCwd)
+      sendToWebview({
+        requestId,
+        type: 'response',
+        response: { type: 'get_session_response', messages }
+      })
       break
     }
     case 'open_file':
@@ -1005,23 +914,46 @@ async function handleWebviewRequest(msg: { requestId?: string; channelId?: strin
       break
     }
     case 'get_mcp_servers': {
-      handleGetMcpServers(requestId)
+      handleGetMcpServers(channels, sendToWebview, requestId)
       break
     }
     case 'set_mcp_server_enabled': {
-      handleMcpServerCommand(requestId, 'mcp_toggle', msg.request)
+      handleMcpServerCommand(channels, sendToWebview, requestId, 'mcp_toggle', msg.request)
       break
     }
     case 'reconnect_mcp_server': {
-      handleMcpServerCommand(requestId, 'mcp_reconnect', msg.request)
+      handleMcpServerCommand(channels, sendToWebview, requestId, 'mcp_reconnect', msg.request)
       break
     }
     case 'get_context_usage': {
-      handleContextUsageRequest(requestId)
+      // 从活跃频道收集 token 用量
+      let totalInput = 0
+      let totalOutput = 0
+      for (const ch of channels.values()) {
+        totalInput += ch.totalInputTokens
+        totalOutput += ch.totalOutputTokens
+      }
+      sendToWebview({
+        requestId,
+        type: 'response',
+        response: {
+          type: 'get_context_usage_response',
+          usage: {
+            input_tokens: totalInput,
+            output_tokens: totalOutput,
+            cache_creation_input_tokens: 0,
+            cache_read_input_tokens: 0
+          }
+        }
+      })
       break
     }
     default: {
-      safeLog('[ClaudeIPC] 未处理的请求类型:', requestType, JSON.stringify(msg.request || {}).slice(0, 300))
+      safeLog(
+        '[ClaudeIPC] 未处理的请求类型:',
+        requestType,
+        JSON.stringify(msg.request || {}).slice(0, 300)
+      )
       sendToWebview({
         requestId,
         type: 'response',
@@ -1034,32 +966,15 @@ async function handleWebviewRequest(msg: { requestId?: string; channelId?: strin
 
 // --- Plugin Management ---
 
-async function runClaudeCliCommand(args: string[]): Promise<string> {
-  const binaryPath = await resolveClaudeBinary()
-  if (!binaryPath) throw new Error('未找到 Claude Code CLI')
-
-  return new Promise((resolve, reject) => {
-    const env = { ...process.env } as Record<string, string>
-    execFile(binaryPath, args, {
-      cwd: process.cwd(),
-      env,
-      windowsHide: true,
-      maxBuffer: 10 * 1024 * 1024
-    }, (error, stdout, _stderr) => {
-      if (error) {
-        safeError('[ClaudeIPC] CLI 命令失败:', args.join(' '), error.message)
-        reject(error)
-        return
-      }
-      resolve(stdout)
-    })
-  })
-}
-
-async function handleListPlugins(requestId: string | undefined, request: Record<string, unknown> | undefined): Promise<void> {
+async function handleListPlugins(
+  requestId: string | undefined,
+  request: Record<string, unknown> | undefined
+): Promise<void> {
   try {
     const includeAvailable = request?.includeAvailable ? ' --available' : ''
-    const output = await runClaudeCliCommand(['plugin', 'list', '--json', includeAvailable].filter(Boolean))
+    const output = await runClaudeCliCommand(
+      ['plugin', 'list', '--json', includeAvailable].filter(Boolean)
+    )
     const parsed = JSON.parse(output.trim())
     sendToWebview({
       requestId,
@@ -1076,22 +991,27 @@ async function handleListPlugins(requestId: string | undefined, request: Record<
   }
 }
 
-async function handlePluginCommand(requestId: string | undefined, subcommand: string, request: Record<string, unknown> | undefined): Promise<void> {
+async function handlePluginCommand(
+  requestId: string | undefined,
+  subcommand: string,
+  request: Record<string, unknown> | undefined
+): Promise<void> {
   try {
     const args = ['plugin']
     if (subcommand.startsWith('marketplace')) {
       const parts = subcommand.split(' ')
       args.push('marketplace', parts[1])
       if (parts[1] === 'add' && request?.source) args.push(String(request.source))
-      else if (parts[1] === 'remove' && request?.marketplaceId) args.push(String(request.marketplaceId));
-      else if (parts[1] === 'update' && request?.marketplaceId) args.push(String(request.marketplaceId))
+      else if (parts[1] === 'remove' && request?.marketplaceId)
+        args.push(String(request.marketplaceId))
+      else if (parts[1] === 'update' && request?.marketplaceId)
+        args.push(String(request.marketplaceId))
     } else if (subcommand === 'install') {
       args.push('install', String(request?.pluginId || ''))
       if (request?.scope) args.push('--scope', String(request.scope))
     } else if (subcommand === 'uninstall') {
       args.push('uninstall', String(request?.pluginId || ''))
     } else {
-      // enable/disable
       args.push(subcommand, String(request?.pluginId || ''))
     }
 
@@ -1108,76 +1028,6 @@ async function handlePluginCommand(requestId: string | undefined, subcommand: st
       response: { type: 'error', error: String(e) }
     })
   }
-}
-
-// --- MCP Server Management ---
-
-function handleGetMcpServers(requestId: string | undefined): void {
-  // Query the first active channel for MCP status
-  const firstChannel = channels.values().next().value
-  if (!firstChannel) {
-    sendToWebview({
-      requestId,
-      type: 'response',
-      response: { type: 'get_mcp_servers_response', mcpServers: [] }
-    })
-    return
-  }
-
-  // Send mcp_status query to claude.exe and wait for response
-  const queryId = `mcp_status_${Date.now()}`
-  const timeout = setTimeout(() => {
-    firstChannel.process.removeListener('message', handler)
-    sendToWebview({
-      requestId,
-      type: 'response',
-      response: { type: 'get_mcp_servers_response', mcpServers: [] }
-    })
-  }, 5000)
-
-  const handler = (msg: Record<string, unknown>) => {
-    if (msg.subtype === 'mcp_status' || msg.type === 'mcp_status') {
-      clearTimeout(timeout)
-      firstChannel.process.removeListener('message', handler)
-      const servers = (msg.mcpServers || []) as Array<{ name: string; status: string; error?: string; config?: unknown }>
-      sendToWebview({
-        requestId,
-        type: 'response',
-        response: {
-          type: 'get_mcp_servers_response',
-          mcpServers: servers.filter(s => s.name !== 'claude-vscode')
-        }
-      })
-    }
-  }
-
-  firstChannel.process.on('message', handler)
-  firstChannel.process.send({ type: 'query', subtype: 'mcp_status', queryId })
-}
-
-function handleMcpServerCommand(requestId: string | undefined, action: string, request: Record<string, unknown> | undefined): void {
-  const channelId = request?.channelId as string
-  const channel = channelId ? channels.get(channelId) : channels.values().next().value
-  if (!channel) {
-    sendToWebview({ requestId, type: 'response', response: { type: `${action}_response` } })
-    return
-  }
-
-  channel.process.send({
-    type: action,
-    serverName: request?.serverName,
-    enabled: request?.enabled
-  })
-
-  sendToWebview({ requestId, type: 'response', response: { type: `${action}_response` } })
-}
-
-function handleContextUsageRequest(requestId: string | undefined): void {
-  sendToWebview({
-    requestId,
-    type: 'response',
-    response: { type: 'get_context_usage_response', usage: null }
-  })
 }
 
 export async function shutdownClaude(): Promise<void> {
