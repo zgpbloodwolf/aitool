@@ -122,6 +122,29 @@ function createWindow(): BrowserWindow {
   return mainWindow
 }
 
+// D-12: 单实例锁 + 右键菜单通信 (UX-10)
+const gotTheLock = app.requestSingleInstanceLock()
+if (!gotTheLock) {
+  app.quit()
+} else {
+  app.on('second-instance', (_event, argv, _workingDirectory) => {
+    // 从命令行参数中提取目录路径
+    // 过滤掉 electron 开发模式参数和 .exe 文件 (RESEARCH Pitfall 3)
+    const dirPath = argv.find((arg) =>
+      /^[A-Z]:\\/i.test(arg) && !arg.endsWith('.exe')
+    )
+    const mainWindow = BrowserWindow.getAllWindows()[0]
+    if (mainWindow) {
+      mainWindow.show()
+      mainWindow.focus()
+      if (dirPath) {
+        // 通过 IPC 通知渲染进程创建新标签页并设置工作目录
+        mainWindow.webContents.send('open-directory', dirPath)
+      }
+    }
+  })
+}
+
 if (!app.isPackaged && process.env['ELECTRON_DEBUG']) {
   app.commandLine.appendSwitch('remote-debugging-port', '9222')
 }
@@ -172,6 +195,9 @@ app.whenReady().then(() => {
   // D-12: 自动更新初始化（检查 GitHub Releases）
   setupAutoUpdater(mainWindow)
 
+  // D-09: 首次启动检查右键菜单注册表 (UX-10)
+  ensureContextMenuRegistered()
+
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
@@ -192,4 +218,32 @@ app.on('window-all-closed', () => {
 /** 获取当前 resolved 主题（供通知管理器等模块使用） */
 export function getCurrentTheme(): 'dark' | 'light' {
   return currentResolvedTheme
+}
+
+/** 检查并补注册右键菜单（D-09 双重注册保障） */
+function ensureContextMenuRegistered(): void {
+  if (!app.isPackaged) return // 开发模式不注册
+
+  const exePath = app.getPath('exe')
+  const regCheckCmd = 'reg query "HKCU\\Software\\Classes\\Directory\\shell\\ai-tools" /ve 2>nul'
+
+  try {
+    execSync(regCheckCmd, { stdio: 'pipe' })
+    // 键已存在，无需操作
+  } catch {
+    // 键不存在，补注册
+    const regKey = 'HKCU\\Software\\Classes\\Directory\\shell\\ai-tools'
+    execSync(`reg add "${regKey}" /ve /d "使用 AI Tools 打开" /f`, { stdio: 'pipe' })
+    execSync(`reg add "${regKey}" /v Icon /d "${exePath}" /f`, { stdio: 'pipe' })
+    execSync(`reg add "${regKey}\\command" /ve /d "\\"${exePath}\\" \\"%V\\"" /f`, {
+      stdio: 'pipe'
+    })
+
+    const bgKey = 'HKCU\\Software\\Classes\\Directory\\Background\\shell\\ai-tools'
+    execSync(`reg add "${bgKey}" /ve /d "使用 AI Tools 打开当前目录" /f`, { stdio: 'pipe' })
+    execSync(`reg add "${bgKey}" /v Icon /d "${exePath}" /f`, { stdio: 'pipe' })
+    execSync(`reg add "${bgKey}\\command" /ve /d "\\"${exePath}\\" \\"%V\\"" /f`, {
+      stdio: 'pipe'
+    })
+  }
 }

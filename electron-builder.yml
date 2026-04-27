@@ -32,6 +32,7 @@ nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
+  include: build/installer.nsh
 mac:
   entitlementsInherit: build/entitlements.mac.plist
   notarize: false
