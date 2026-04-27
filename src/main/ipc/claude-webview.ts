@@ -416,6 +416,7 @@ async function resumeChannelAndSendMessage(
   }
 }
 
+/** D-06: 简化 handleInterrupt — 通过 stdin 控制消息中断，超时回退 kill-and-resume */
 function handleInterrupt(channelId: string): void {
   safeLog('[ClaudeIPC] handleInterrupt 收到中断请求 — channelId:', channelId)
   const channel = channels.get(channelId)
@@ -430,44 +431,38 @@ function handleInterrupt(channelId: string): void {
     return
   }
 
-  // 非 Windows 平台：SIGINT 可以可靠送达，使用原有 interrupt()
-  if (process.platform !== 'win32') {
-    channel.process.interrupt()
-    safeLog('[ClaudeIPC] handleInterrupt interrupt() 已调用 — channelId:', channelId)
-    return
-  }
+  // D-01, D-06: 统一通过 stdin 控制消息中断，不区分平台
+  channel.process.interrupt()
+  safeLog('[ClaudeIPC] handleInterrupt 控制消息已发送 — channelId:', channelId)
 
+  // D-03: 超时回退 — 如果 5 秒后进程仍在运行，回退到 kill-and-resume
   const sessionId = channel.lastSessionId
   if (!sessionId) {
-    safeLog('[ClaudeIPC] handleInterrupt 无 sessionId，回退到强制中断')
-    channel.process.interrupt()
+    safeLog('[ClaudeIPC] handleInterrupt 无 sessionId，跳过超时回退设置')
     return
   }
 
-  safeLog('[ClaudeIPC] handleInterrupt 停止进程 — sessionId:', sessionId)
+  // 保存引用用于超时回调
+  const proc = channel.process
 
-  // 1. 发送合成 result 消息，通知 webview 停止"生成中"状态
-  sendToWebview({
-    type: 'io_message',
-    channelId,
-    message: {
-      type: 'result',
-      subtype: 'success',
-      cost_usd: 0,
-      duration_ms: 0,
-      duration_api_ms: 0,
-      is_error: false,
-      num_turns: 1,
-      session_id: sessionId
+  setTimeout(() => {
+    // 进程已退出或 channel 已不存在 — 无需回退
+    if (!proc.running) {
+      safeLog('[ClaudeIPC] handleInterrupt 超时检查: 进程已退出 — channelId:', channelId)
+      return
     }
-  })
 
-  // 2. 标记为用户主动中断（exit handler 会检查此标记，不发崩溃通知）
-  channel.interrupted = true
-  channel.pendingToolUse = null
+    const currentChannel = channels.get(channelId)
+    if (!currentChannel || currentChannel.process !== proc) {
+      return
+    }
 
-  // 3. 停止进程（保留 channel，等用户发新消息时用 --resume 恢复）
-  channel.process.stop()
+    // 进程仍在运行 — CLI 未响应控制消息，回退到 kill-and-resume
+    safeLog('[ClaudeIPC] handleInterrupt 超时回退: CLI 未响应，执行 kill-and-resume — channelId:', channelId)
+    channel.interrupted = true
+    channel.pendingToolUse = null
+    proc.stop()
+  }, 5000)
 }
 
 function sendToolPermissionRequest(

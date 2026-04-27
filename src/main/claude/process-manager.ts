@@ -165,6 +165,7 @@ export class ClaudeProcessManager extends EventEmitter {
     }
   }
 
+  /** D-01, D-02: 通过 stdin 管道发送控制消息中断 claude.exe（替代 SIGINT） */
   interrupt(): void {
     console.log('[Claude] interrupt() 调用 — PID:', this.process?.pid, '_running:', this._running)
 
@@ -173,20 +174,18 @@ export class ClaudeProcessManager extends EventEmitter {
       return
     }
 
-    const pid = this.process.pid!
-    try {
-      // Windows: process.kill(pid, 'SIGINT') 尝试 GenerateConsoleCtrlEvent(CTRL_C_EVENT, pid)
-      // 由于子进程不是进程组组长，libuv 会回退到 TerminateProcess 强制终止
-      // 这是 Windows 的平台限制 — 无法通过标准 API 向特定子进程发送优雅中断
-      process.kill(pid, 'SIGINT')
-      console.log('[Claude] interrupt() SIGINT 已发送 — PID:', pid)
-    } catch (err) {
-      console.warn('[Claude] interrupt() SIGINT 发送失败，尝试强制终止:', err)
-      try {
-        this.process.kill()
-      } catch (killErr) {
-        console.warn('[Claude] interrupt() 强制终止也失败:', killErr)
-      }
+    // D-01: 通过 stdin 管道发送控制消息，与 VSCode Claude Code 插件方式一致
+    // CLI 使用 --input-format stream-json 模式，stdin 接收 JSON 消息
+    // 消息格式: {request_id: string, type: "control_request", request: {subtype: "interrupt"}}
+    const requestId = Math.random().toString(36).substring(2, 15)
+    const controlMessage = {
+      request_id: requestId,
+      type: 'control_request',
+      request: { subtype: 'interrupt' }
     }
+
+    console.log('[Claude] interrupt() 发送控制消息 — requestId:', requestId)
+    this.send(controlMessage)
+    console.log('[Claude] interrupt() 控制消息已发送 — requestId:', requestId)
   }
 }
