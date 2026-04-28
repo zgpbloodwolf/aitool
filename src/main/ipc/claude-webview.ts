@@ -178,7 +178,7 @@ async function handleLaunchClaude(
   const binaryPath = await resolveClaudeBinary()
   if (!binaryPath) {
     launchingChannels.delete(channelId)
-    sendToWebview({ type: 'close_channel', channelId, error: '未找到 Claude Code CLI' })
+    sendToWebview({ type: 'close_channel', channelId, error: '未找到 Claude Code CLI' }, channelId)
     return
   }
 
@@ -353,7 +353,7 @@ async function handleLaunchClaude(
       })
     }
     channels.delete(channelId)
-    sendToWebview({ type: 'close_channel', channelId, error: String(err) })
+    sendToWebview({ type: 'close_channel', channelId, error: String(err) }, channelId)
   })
 
   proc.start({ claudePath: binaryPath, cwd: cwd || process.cwd(), resumeSessionId, env: procEnv })
@@ -783,7 +783,7 @@ export function registerClaudeWebviewHandlers(): void {
 
     const messages = await getSessionMessages(sessionId, currentCwd)
     for (const obj of messages) {
-      sendToWebview({ type: 'io_message', channelId: effectiveChannelId, message: obj })
+      sendToWebview({ type: 'io_message', channelId: effectiveChannelId, message: obj }, effectiveChannelId)
     }
     safeLog('[ClaudeIPC] 已重放', messages.length, '条消息，会话:', sessionId)
 
@@ -957,7 +957,9 @@ async function handleWebviewRequest(msg: {
         }
       })
       for (const pending of pendingMessages) {
-        sendToWebview(pending)
+        // pending 消息格式为 { type: 'io_message', channelId, message } — 定向发送
+        const pendingChannelId = (pending as Record<string, unknown>)?.channelId as string | undefined
+        sendToWebview(pending, pendingChannelId)
       }
       pendingMessages = []
       break
@@ -1049,7 +1051,7 @@ async function handleWebviewRequest(msg: {
         requestId,
         type: 'response',
         response: { type: 'set_model_response', success: true, model: model || 'default' }
-      })
+      }, channelId)
       break
     }
     case 'set_thinking_level': {
@@ -1064,7 +1066,7 @@ async function handleWebviewRequest(msg: {
         requestId,
         type: 'response',
         response: { type: 'set_thinking_level_response', success: true }
-      })
+      }, channelId)
       break
     }
     case 'set_permission_mode': {
@@ -1082,7 +1084,7 @@ async function handleWebviewRequest(msg: {
         requestId,
         type: 'response',
         response: { type: 'set_permission_mode_response', success: true }
-      })
+      }, channelId)
       break
     }
     case 'list_plugins': {
@@ -1149,7 +1151,7 @@ async function handleWebviewRequest(msg: {
             cache_read_input_tokens: 0
           }
         }
-      })
+      }, channelId)
       break
     }
     default: {
