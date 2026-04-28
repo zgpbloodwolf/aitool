@@ -219,6 +219,15 @@ Plans:
 - 分支对话在标签栏有层级标识
 - 可在不同分支间切换
 
+**Plans**: 5 plans
+
+Plans:
+- [ ] 08-01-PLAN.md — WindowManager + WindowChannelRegistry + createWindow 重构 + 通知路由 + 托盘更新
+- [ ] 08-02-PLAN.md — 分支数据模型 (BranchStore/BranchManager) + 分支 IPC 处理器
+- [ ] 08-03-PLAN.md — 标签拖拽出窗口 + 多窗口交互 (ChatPanel 拖拽检测 + ghost 窗口 + 频道迁移)
+- [ ] 08-04-PLAN.md — 分支 UI (webview 分支按钮注入 + 内联指示器 + 标签页分支标签 + 右键菜单重命名)
+- [ ] 08-05-PLAN.md — 集成验证 (通知精准路由 + 分支限制执行 + 窗口关闭边缘处理)
+
 **Success Criteria**:
   1. 多个窗口可独立运行不同工作区的对话
   2. 从任意消息可创建分支，分支关系可视化
@@ -256,7 +265,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 5. 主题个性化 | 3/3 | Complete | 2026-04-26 |
 | 6. 知识管理 | 4/4 | Complete | 2026-04-26 |
 | 7. 工作流增强 | 3/3 | Complete | 2026-04-27 |
-| 8. 高级特性 | 0/- | Not started | - |
+| 8. 高级特性 | 0/5 | Planned | - |
 | 9. 远程访问 | 0/- | Not started | - |
 
 ## Feature Summary
