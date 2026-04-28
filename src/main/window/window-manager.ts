@@ -242,7 +242,7 @@ export class WindowManager {
       title: 'AI 工具',
       backgroundColor: nativeTheme.shouldUseDarkColors ? '#1e1e2e' : '#eff1f5',
       webPreferences: {
-        preload: join(__dirname, '../../preload/index.js'),
+        preload: join(__dirname, '../preload/index.js'),
         sandbox: false,
         contextIsolation: true
       }
@@ -320,7 +320,7 @@ export class WindowManager {
     if (!app.isPackaged && process.env['ELECTRON_RENDERER_URL']) {
       win.loadURL(process.env['ELECTRON_RENDERER_URL'])
     } else {
-      win.loadFile(join(__dirname, '../../renderer/index.html'))
+      win.loadFile(join(__dirname, '../renderer/index.html'))
     }
 
     return win
