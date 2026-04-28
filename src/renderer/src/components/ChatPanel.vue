@@ -48,10 +48,17 @@ const contextMenuVisible = ref(false)
 const contextMenuX = ref(0)
 const contextMenuY = ref(0)
 const contextMenuTabId = ref<string | null>(null)
-const contextMenuItems: MenuItem[] = [
-  { label: '导出对话', action: 'export', icon: '\u{1F4C4}' },
-  { label: '重命名分支', action: 'rename-branch', icon: '\u{270F}' }
-]
+/** 动态标签右键菜单项 — 根据标签是否为分支动态调整菜单项 */
+const contextMenuItems = computed<MenuItem[]>(() => {
+  const tab = contextMenuTabId.value ? tabs.value.find(t => t.id === contextMenuTabId.value) : null
+  const items: MenuItem[] = [
+    { label: '导出对话', action: 'export', icon: '\u{1F4C4}' }
+  ]
+  if (tab?.branchId) {
+    items.push({ label: '重命名分支', action: 'rename-branch', icon: '\u{270F}' })
+  }
+  return items
+})
 
 // 剪贴板面板状态
 const clipboardPanelVisible = ref(false)
@@ -160,7 +167,7 @@ async function handleBranchCreate(sourceTabId: string, messageIndex: number): Pr
   // 检查分支配额
   const quota = await window.api.branchCanCreate(sessionId)
   if (!quota.canCreate) {
-    showStatus('已达最大分支数量（10），请关闭旧分支后重试', 'warning', 3000)
+    showStatus(`已达最大分支数量（10），请关闭旧分支后重试。剩余配额: ${quota.remaining}`, 'warning', 5000)
     return
   }
 
@@ -512,6 +519,8 @@ async function resumeSession(sessionId: string, summary?: string): Promise<void>
       if (tabId === activeTabId.value) channelToTab.delete(chId)
     }
     channelToTab.set(result.channelId, activeTabId.value)
+    // 注册频道到窗口管理器
+    window.api.windowRegisterChannel(result.channelId)
     // D-13: 恢复会话后用摘要更新标签名
     if (summary?.trim()) {
       const tab = tabs.value.find(t => t.id === activeTabId.value)
