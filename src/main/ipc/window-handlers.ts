@@ -47,10 +47,11 @@ export function registerWindowHandlers(windowManager: WindowManager): void {
 
   // 标签拖拽出窗口 — 结束拖拽，创建新窗口
   ipcMain.handle('tab-drag:end', (event) => {
-    const { BrowserWindow } = require('electron')
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { BrowserWindow } = require('electron') as typeof import('electron')
     const sourceWindow = BrowserWindow.fromWebContents(event.sender)
-    const sourceWindowId = sourceWindow?.id
-    if (!sourceWindowId) return { success: false, error: '无法确定源窗口' }
+    const _sourceWindowId = sourceWindow?.id
+    if (!_sourceWindowId) return { success: false, error: '无法确定源窗口' }
 
     // 先获取拖拽状态（finalizeDragOut 会清除状态）
     const dragState = windowManager.getDragState()

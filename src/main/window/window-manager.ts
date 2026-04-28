@@ -26,7 +26,12 @@ export class WindowManager {
   }
 
   /** 创建额外窗口（拖拽/分支用） */
-  createWindow(options?: { x?: number; y?: number; width?: number; height?: number }): BrowserWindow {
+  createWindow(options?: {
+    x?: number
+    y?: number
+    width?: number
+    height?: number
+  }): BrowserWindow {
     return this.createBrowserWindow({
       x: options?.x,
       y: options?.y,
@@ -141,7 +146,7 @@ export class WindowManager {
   }
 
   /** 完成拖拽 — 创建新窗口并迁移频道 */
-  finalizeDragOut(sourceWindowId: number): { windowId: number; window: BrowserWindow } | null {
+  finalizeDragOut(_sourceWindowId: number): { windowId: number; window: BrowserWindow } | null {
     // 停止跟踪
     if (this.dragTrackingInterval) {
       clearInterval(this.dragTrackingInterval)
@@ -156,7 +161,6 @@ export class WindowManager {
 
     // 先保存 drag 状态到临时变量
     const channelId = this.dragChannelId
-    const tabId = this.dragTabId
 
     if (!channelId) return null
 
@@ -187,7 +191,7 @@ export class WindowManager {
       this.dragTabId = null
 
       return { windowId: newWindowId, window: newWindow }
-    } catch (err) {
+    } catch {
       // 创建窗口失败（如达到最大窗口数）
       this.dragChannelId = null
       this.dragTabId = null
@@ -282,11 +286,11 @@ export class WindowManager {
         return
       }
       const shortcuts: Record<string, string> = {
-        'n': 'shortcut:new-tab',
-        'w': 'shortcut:close-tab',
-        'b': 'shortcut:toggle-sidebar',
+        n: 'shortcut:new-tab',
+        w: 'shortcut:close-tab',
+        b: 'shortcut:toggle-sidebar',
         ',': 'shortcut:open-settings',
-        '0': 'shortcut:reset-zoom'
+        0: 'shortcut:reset-zoom'
       }
       if (input.key === 'Tab') {
         event.preventDefault()
