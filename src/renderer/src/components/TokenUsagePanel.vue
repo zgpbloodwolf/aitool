@@ -17,7 +17,7 @@ import { useTokenUsage } from '../composables/useTokenUsage'
 // Tree-shaking: 只注册柱状图需要的组件
 ChartJS.register(Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale)
 
-const { stats, loading, selectedRange, selectedWorkspace, fetchStats } = useTokenUsage()
+const { stats, loading, selectedRange, fetchStats } = useTokenUsage()
 
 // 时间范围选项
 const rangeOptions: { value: string; label: string }[] = [

@@ -129,6 +129,16 @@ interface WindowApi {
   // 主题
   updateTheme: (mode: 'dark' | 'light' | 'system', resolved?: 'dark' | 'light') => void
   onThemeSystemChanged: (callback: (resolvedTheme: 'dark' | 'light') => void) => () => void
+  // Token 用量统计 (UX-09)
+  getTokenUsageStats: (range: string) => Promise<{
+    totalInputTokens: number
+    totalOutputTokens: number
+    totalSessions: number
+    days: { date: string; inputTokens: number; outputTokens: number }[]
+    workspaces: { cwd: string; inputTokens: number; outputTokens: number; sessions: number }[]
+  }>
+  // 右键菜单打开目录 (UX-10)
+  onOpenDirectory: (callback: (dirPath: string) => void) => () => void
 }
 
 declare global {
