@@ -500,6 +500,72 @@ function generateHostHtml(_extensionPath: string): string {
       }, 2000);
     })();
   </script>
+  <script>
+    // 分支按钮注入 — 在每条用户消息旁添加分支图标 (UX-12, D-07)
+    (function() {
+      var style = document.createElement('style');
+      style.textContent = '.aitools-branch-btn{position:absolute;right:8px;top:50%;transform:translateY(-50%);width:24px;height:24px;border-radius:4px;border:none;background:transparent;cursor:pointer;opacity:0;transition:opacity .15s,background .15s;display:flex;align-items:center;justify-content:center;z-index:5}.aitools-branch-btn:hover{background:rgba(255,255,255,.1);opacity:1!important}.aitools-user-msg:hover .aitools-branch-btn{opacity:.6}.aitools-branch-indicator{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;margin:4px 0;background:rgba(255,255,255,.06);border-radius:4px;font-size:12px;cursor:pointer;transition:background .15s}.aitools-branch-indicator:hover{background:rgba(255,255,255,.12)}.aitools-branch-indicator-count{font-weight:600;color:#89b4fa}';
+      document.head.appendChild(style);
+
+      var messageIndex = 0;
+
+      var observer = new MutationObserver(function() { injectBranchButtons(); });
+      observer.observe(document.body, { childList: true, subtree: true });
+
+      function injectBranchButtons() {
+        var userMessages = document.querySelectorAll('.chat-message, [data-message-author-role="user"], .message-row');
+        userMessages.forEach(function(msg) {
+          if (msg.classList.contains('aitools-branch-processed')) return;
+          var isUserMsg = msg.querySelector('[data-is-user="true"]') !== null ||
+                          msg.classList.contains('user') ||
+                          msg.getAttribute('data-message-author-role') === 'user';
+          if (!isUserMsg) return;
+          msg.classList.add('aitools-branch-processed', 'aitools-user-msg');
+          msg.style.position = 'relative';
+          var idx = messageIndex++;
+          var btn = document.createElement('button');
+          btn.className = 'aitools-branch-btn';
+          btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v3a4 4 0 0 0 4 4h1"/><circle cx="4" cy="3" r="1.5" fill="currentColor"/><circle cx="9" cy="12" r="1.5" fill="currentColor"/></svg>';
+          btn.title = '从此消息创建分支';
+          btn.setAttribute('data-msg-index', String(idx));
+          btn.onclick = function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            window.parent.postMessage({ type: 'claude-webview-message', message: { type: 'branch:create', messageIndex: idx } }, '*');
+          };
+          msg.appendChild(btn);
+        });
+      }
+
+      window.addEventListener('message', function(e) {
+        var data = e.data;
+        if (!data || data.type !== 'from-extension') return;
+        var msg = data.message;
+        if (!msg || msg.type !== 'branch:indicators') return;
+        updateBranchIndicators(msg.branchPoints || []);
+      });
+
+      function updateBranchIndicators(branchPoints) {
+        document.querySelectorAll('.aitools-branch-indicator').forEach(function(el) { el.remove(); });
+        branchPoints.forEach(function(bp) {
+          var targetMsg = null;
+          document.querySelectorAll('.aitools-branch-processed').forEach(function(msg) {
+            var btn = msg.querySelector('.aitools-branch-btn');
+            if (btn && parseInt(btn.getAttribute('data-msg-index')) === bp.messageIndex) targetMsg = msg;
+          });
+          if (!targetMsg) return;
+          var indicator = document.createElement('div');
+          indicator.className = 'aitools-branch-indicator';
+          indicator.innerHTML = '<span class="aitools-branch-indicator-count">' + bp.count + '</span> 个分支';
+          indicator.onclick = function() {
+            window.parent.postMessage({ type: 'claude-webview-message', message: { type: 'branch:switch', messageIndex: bp.messageIndex } }, '*');
+          };
+          if (targetMsg.nextSibling) targetMsg.parentNode.insertBefore(indicator, targetMsg.nextSibling);
+          else targetMsg.parentNode.appendChild(indicator);
+        });
+      }
+    })();
+  </script>
 </body>
 </html>`
 }
