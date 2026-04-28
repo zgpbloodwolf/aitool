@@ -26,12 +26,13 @@
 - ✓ 状态栏消息显示（系统消息、重试状态等）
 - ✓ 主题个性化 — 暗色/亮色/跟随系统三种主题 (Phase 5)
 - ✓ 知识管理 — 对话导出 Markdown、剪贴板历史与收藏片段 (Phase 6)
+- ✓ 工作流增强 — Token 用量统计面板、Windows 右键菜单集成 (Phase 7)
 
 ### Active
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] 工作流增强 — Token 用量统计、Windows 右键菜单集成 (Phase 7)
+- [ ] 高级特性 — 多窗口支持、对话分支 (Phase 8)
 
 ### Out of Scope
 
@@ -91,4 +92,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-26 after Phase 5 completion*
+*Last updated: 2026-04-28 after Phase 7 completion*
