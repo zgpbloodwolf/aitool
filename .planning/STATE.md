@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-04-24)
 
 **Core value:** Users can interact with Claude Code in the desktop client without 429 rate limit errors
-**Current focus:** Phase 8 Plan 02 complete — ready for Plan 03
+**Current focus:** Phase 8 Plan 03 complete — ready for Plan 04
 
 ## Current Position
 
 Phase: 8 of 9 (高级特性) — IN PROGRESS
-Plan: 2/5 complete
+Plan: 3/5 complete
 Status: Executing
-Last activity: 2026-04-28 -- Plan 08-02 complete (BranchStore + BranchManager + Branch IPC)
+Last activity: 2026-04-28 -- Plan 08-03 complete (tab drag-out to new window)
 
-Progress: [#########.] ~92% (phases 1-7 + plan 08-01/02 complete)
+Progress: [#########.] ~93% (phases 1-7 + plan 08-01/02/03 complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 14
+- Total plans completed: 15
 - Average duration: ~6 min
-- Total execution time: ~1h 39min
+- Total execution time: ~1h 43min
 
 **By Phase:**
 
@@ -33,10 +33,10 @@ Progress: [#########.] ~92% (phases 1-7 + plan 08-01/02 complete)
 | 4. Quick Wins | 5 | ~18 min | ~3.6 min |
 | 5. 主题个性化 | 3 | ~16 min | ~5 min |
 | 7. 工作流增强 | 3 | ~19 min | ~6 min |
-| 8. 高级特性 | 2 | ~6 min | ~3 min |
+| 8. 高级特性 | 3 | ~10 min | ~3 min |
 
 **Recent Trend:**
-- Last 5 plans: 07-02 (3min), 07-03 (9min), 08-01 (3min), 08-02 (3min)
+- Last 5 plans: 07-03 (9min), 08-01 (3min), 08-02 (3min), 08-03 (4min)
 - Trend: Consistent execution, Phase 8 in progress
 
 *Updated after each plan completion*
@@ -78,5 +78,5 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-04-28
-Stopped at: Completed 08-02-PLAN.md (BranchStore + BranchManager + Branch IPC)
-Resume file: .planning/phases/08-advanced-features/08-02-SUMMARY.md
+Stopped at: Completed 08-03-PLAN.md (tab drag-out to new window)
+Resume file: .planning/phases/08-advanced-features/08-03-SUMMARY.md
