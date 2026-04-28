@@ -11,6 +11,12 @@ interface SessionTab {
   id: string
   label: string
   cwd?: string
+  /** 分支元数据（可选，分支标签页才有） */
+  branchId?: string
+  /** 分支来源标签（如 "分支 #1"） */
+  branchLabel?: string
+  /** 父会话 ID */
+  parentSessionId?: string
 }
 
 const extStore = useExtensionStore()
@@ -43,7 +49,8 @@ const contextMenuX = ref(0)
 const contextMenuY = ref(0)
 const contextMenuTabId = ref<string | null>(null)
 const contextMenuItems: MenuItem[] = [
-  { label: '导出对话', action: 'export', icon: '\u{1F4C4}' }
+  { label: '导出对话', action: 'export', icon: '\u{1F4C4}' },
+  { label: '重命名分支', action: 'rename-branch', icon: '\u{270F}' }
 ]
 
 // 剪贴板面板状态
@@ -131,6 +138,139 @@ function clearStatus(): void {
   }
 }
 
+/** UX-12: 处理来自 webview 的分支创建请求 (D-07) */
+async function handleBranchCreate(sourceTabId: string, messageIndex: number): Promise<void> {
+  // 查找源标签对应的频道
+  let channelId: string | null = null
+  for (const [chId, tabId] of channelToTab) {
+    if (tabId === sourceTabId) { channelId = chId; break }
+  }
+  if (!channelId) {
+    showStatus('无法定位当前频道', 'error')
+    return
+  }
+
+  // 获取活跃会话 ID
+  const sessionId = await window.api.getActiveSessionId(channelId)
+  if (!sessionId) {
+    showStatus('当前无活跃会话，无法创建分支', 'warning')
+    return
+  }
+
+  // 检查分支配额
+  const quota = await window.api.branchCanCreate(sessionId)
+  if (!quota.canCreate) {
+    showStatus('已达最大分支数量（10），请关闭旧分支后重试', 'warning', 3000)
+    return
+  }
+
+  showStatus('正在创建分支...', 'info')
+
+  // 调用分支创建 IPC
+  const result = await window.api.branchCreate({
+    parentSessionId: sessionId,
+    branchPointIndex: messageIndex,
+    cwd: tabs.value.find(t => t.id === sourceTabId)?.cwd || ''
+  })
+
+  if (result.success && result.channelId && result.branch) {
+    // 创建新标签页显示分支
+    const branchTabId = generateTabId()
+    const branch = result.branch as { id: string; label: string }
+    tabs.value.push({
+      id: branchTabId,
+      label: branch.label,
+      branchId: branch.id,
+      branchLabel: branch.label,
+      parentSessionId: sessionId,
+      cwd: tabs.value.find(t => t.id === sourceTabId)?.cwd
+    })
+    tabOrder.set(branchTabId, tabs.value.length - 1)
+    activeTabId.value = branchTabId
+
+    // 注册频道到标签映射
+    channelToTab.set(result.channelId, branchTabId)
+    // 通知主进程注册频道到当前窗口
+    window.api.windowRegisterChannel(result.channelId)
+
+    showStatus('分支已创建', 'success', 2000)
+  } else {
+    showStatus('创建分支失败: ' + (result.error || '未知错误'), 'error', 3000)
+  }
+}
+
+/** UX-12: 处理分支切换 — 显示分支选择器并切换到目标分支标签页 (D-08) */
+async function handleBranchSwitch(sourceTabId: string, messageIndex: number): Promise<void> {
+  // 查找源标签对应的频道
+  let channelId: string | null = null
+  for (const [chId, tabId] of channelToTab) {
+    if (tabId === sourceTabId) { channelId = chId; break }
+  }
+  if (!channelId) return
+
+  const sessionId = await window.api.getActiveSessionId(channelId)
+  if (!sessionId) return
+
+  // 查询该分支点的所有分支
+  const branches = await window.api.branchListAtPoint({
+    parentSessionId: sessionId,
+    branchPointIndex: messageIndex
+  })
+
+  if (!branches || branches.length === 0) {
+    showStatus('此消息点没有其他分支', 'info', 2000)
+    return
+  }
+
+  // 找到每个分支对应的标签页
+  const branchTabs = (branches as Array<{ channelId: string; label: string }>).map(b => {
+    const tabId = channelToTab.get(b.channelId)
+    return { branch: b, tabId }
+  })
+
+  // 显示分支选择器
+  const options = branchTabs.map(bt =>
+    `${bt.tabId ? '✓ ' : ''}${bt.branch.label}${bt.tabId ? '' : ' (未打开)'}`
+  )
+
+  const choice = prompt(
+    `选择要切换到的分支:\n${options.map((o, i) => `${i + 1}. ${o}`).join('\n')}\n\n输入编号（取消则留空）:`
+  )
+
+  if (!choice) return
+  const idx = parseInt(choice) - 1
+  if (idx < 0 || idx >= branchTabs.length) return
+
+  const selected = branchTabs[idx]
+  if (selected.tabId) {
+    // 分支已打开 — 切换到该标签页
+    activeTabId.value = selected.tabId
+  } else {
+    showStatus('该分支未在当前窗口打开', 'info', 2000)
+  }
+}
+
+/** UX-12: 重命名分支标签页 (D-11) */
+async function renameBranchTab(tabId: string): Promise<void> {
+  const tab = tabs.value.find(t => t.id === tabId)
+  if (!tab?.branchId) {
+    showStatus('此标签不是分支，无法重命名', 'warning', 2000)
+    return
+  }
+
+  const newLabel = prompt('输入新分支名称:', tab.branchLabel || tab.label)
+  if (!newLabel || newLabel === tab.branchLabel) return
+
+  const success = await window.api.branchRename(tab.branchId, newLabel)
+  if (success) {
+    tab.label = newLabel
+    tab.branchLabel = newLabel
+    showStatus('分支已重命名', 'success', 2000)
+  } else {
+    showStatus('重命名失败', 'error')
+  }
+}
+
 /** D-11: 标签右键菜单 */
 function showTabContextMenu(event: MouseEvent, tabId: string): void {
   event.preventDefault()
@@ -147,6 +287,8 @@ function handleContextMenuAction(action: string): void {
       console.error('[导出失败]', e)
       showStatus('导出失败: ' + String(e), 'error')
     })
+  } else if (action === 'rename-branch' && contextMenuTabId.value) {
+    renameBranchTab(contextMenuTabId.value)
   }
   contextMenuVisible.value = false
 }
@@ -553,6 +695,18 @@ function handleIframeMessage(event: MessageEvent) {
       }
     }
 
+    // UX-12: 处理 webview 分支按钮点击
+    if (message?.type === 'branch:create' && sourceTabId) {
+      handleBranchCreate(sourceTabId, (message as Record<string, unknown>).messageIndex as number || 0)
+      return  // 不转发到主进程
+    }
+
+    // UX-12: 处理 webview 分支切换点击
+    if (message?.type === 'branch:switch' && sourceTabId) {
+      handleBranchSwitch(sourceTabId, (message as Record<string, unknown>).messageIndex as number || 0)
+      return
+    }
+
     // Track channelId → tabId mapping from launch_claude
     if (message?.type === 'launch_claude' && message.channelId && sourceTabId) {
       channelToTab.set(message.channelId as string, sourceTabId)
@@ -938,7 +1092,8 @@ async function handleClipboardSelect(_text: string): Promise<void> {
             <span class="tab-status-dot" :class="tabStatuses.get(tab.id) || 'idle'" />
             <span class="tab-text">
               <span class="tab-label">{{ tab.label }}</span>
-              <span v-if="tab.cwd" class="tab-cwd" :title="tab.cwd">{{ tab.cwd.split(/[\\/]/).pop() }}</span>
+              <span v-if="tab.branchLabel" class="tab-branch-tag" :title="'分支来源: ' + tab.parentSessionId">{{ tab.branchLabel }}</span>
+              <span v-else-if="tab.cwd" class="tab-cwd" :title="tab.cwd">{{ tab.cwd.split(/[\\/]/).pop() }}</span>
             </span>
             <span class="tab-close" @click.stop="closeTab(tab.id)">×</span>
           </div>
@@ -1209,6 +1364,19 @@ async function handleClipboardSelect(_text: string): Promise<void> {
 .tab-cwd {
   font-size: 10px;
   color: var(--text-muted, #6c7086);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+/* UX-12: 分支标签样式 */
+.tab-branch-tag {
+  font-size: 10px;
+  color: var(--accent);
+  background: var(--bg-tertiary);
+  padding: 0 4px;
+  border-radius: 2px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
