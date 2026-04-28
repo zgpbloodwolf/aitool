@@ -1,7 +1,7 @@
 // 多窗口管理器 (UX-11)
 // 管理 BrowserWindow 实例生命周期、窗口-频道映射、窗口间广播
 
-import { app, BrowserWindow, nativeTheme, shell } from 'electron'
+import { app, BrowserWindow, nativeTheme, screen, shell } from 'electron'
 import { join } from 'path'
 import { WindowChannelRegistry } from './window-registry'
 
@@ -12,6 +12,10 @@ export class WindowManager {
   private windows = new Map<number, BrowserWindow>()
   private registry = new WindowChannelRegistry()
   private lastActiveWindowId: number | null = null
+  private ghostWindow: BrowserWindow | null = null
+  private dragTrackingInterval: ReturnType<typeof setInterval> | null = null
+  private dragChannelId: string | null = null
+  private dragTabId: string | null = null
 
   /** 创建初始主窗口，等同于原 createWindow() 行为 */
   createMainWindow(): BrowserWindow {
@@ -86,6 +90,128 @@ export class WindowManager {
   /** 当前窗口数量 */
   getWindowCount(): number {
     return this.windows.size
+  }
+
+  /** 开始拖拽预览 — 创建半透明 ghost 窗口跟随鼠标 */
+  startDragPreview(channelId: string, tabId: string): void {
+    // 防止重复调用
+    if (this.ghostWindow) return
+
+    this.dragChannelId = channelId
+    this.dragTabId = tabId
+
+    const cursorPos = screen.getCursorScreenPoint()
+
+    this.ghostWindow = new BrowserWindow({
+      width: 300,
+      height: 200,
+      x: cursorPos.x - 150,
+      y: cursorPos.y - 100,
+      transparent: true,
+      frame: false,
+      alwaysOnTop: true,
+      focusable: false,
+      skipTaskbar: true,
+      show: false,
+      opacity: 0.7,
+      webPreferences: {
+        sandbox: false,
+        contextIsolation: false
+      }
+    })
+
+    this.ghostWindow.loadURL(
+      'data:text/html,<body style="margin:0;background:rgba(30,30,46,0.8);color:#cdd6f4;display:flex;align-items:center;justify-content:center;font-family:sans-serif;border-radius:8px;">拖拽以创建新窗口</body>'
+    )
+    this.ghostWindow.once('ready-to-show', () => {
+      this.ghostWindow?.show()
+    })
+
+    // 每 16ms 跟踪鼠标位置
+    this.dragTrackingInterval = setInterval(() => {
+      this.updateDragPreview()
+    }, 16)
+  }
+
+  /** 更新 ghost 窗口位置 */
+  private updateDragPreview(): void {
+    if (!this.ghostWindow || this.ghostWindow.isDestroyed()) return
+    const pos = screen.getCursorScreenPoint()
+    this.ghostWindow.setPosition(pos.x - 150, pos.y - 100)
+  }
+
+  /** 完成拖拽 — 创建新窗口并迁移频道 */
+  finalizeDragOut(sourceWindowId: number): { windowId: number; window: BrowserWindow } | null {
+    // 停止跟踪
+    if (this.dragTrackingInterval) {
+      clearInterval(this.dragTrackingInterval)
+      this.dragTrackingInterval = null
+    }
+
+    // 销毁 ghost 窗口
+    if (this.ghostWindow && !this.ghostWindow.isDestroyed()) {
+      this.ghostWindow.close()
+    }
+    this.ghostWindow = null
+
+    // 先保存 drag 状态到临时变量
+    const channelId = this.dragChannelId
+    const tabId = this.dragTabId
+
+    if (!channelId) return null
+
+    // 获取鼠标位置计算新窗口位置
+    const cursorPos = screen.getCursorScreenPoint()
+    const display = screen.getDisplayNearestPoint(cursorPos)
+    const { width: screenWidth, height: screenHeight } = display.workAreaSize
+    const newWidth = 1200
+    const newHeight = 800
+    const x = Math.max(
+      display.workArea.x,
+      Math.min(cursorPos.x - newWidth / 2, display.workArea.x + screenWidth - newWidth)
+    )
+    const y = Math.max(
+      display.workArea.y,
+      Math.min(cursorPos.y - newHeight / 2, display.workArea.y + screenHeight - newHeight)
+    )
+
+    try {
+      const newWindow = this.createWindow({ x, y, width: newWidth, height: newHeight })
+      const newWindowId = newWindow.id
+
+      // 迁移频道到新窗口
+      this.registry.migrateChannel(channelId, newWindowId)
+
+      // 清除 drag 状态
+      this.dragChannelId = null
+      this.dragTabId = null
+
+      return { windowId: newWindowId, window: newWindow }
+    } catch (err) {
+      // 创建窗口失败（如达到最大窗口数）
+      this.dragChannelId = null
+      this.dragTabId = null
+      return null
+    }
+  }
+
+  /** 取消拖拽 — 清理 ghost 窗口和状态 */
+  cancelDrag(): void {
+    if (this.dragTrackingInterval) {
+      clearInterval(this.dragTrackingInterval)
+      this.dragTrackingInterval = null
+    }
+    if (this.ghostWindow && !this.ghostWindow.isDestroyed()) {
+      this.ghostWindow.close()
+    }
+    this.ghostWindow = null
+    this.dragChannelId = null
+    this.dragTabId = null
+  }
+
+  /** 获取当前拖拽状态 */
+  getDragState(): { channelId: string | null; tabId: string | null } {
+    return { channelId: this.dragChannelId, tabId: this.dragTabId }
   }
 
   /** 内部：创建 BrowserWindow 实例并注册生命周期 */

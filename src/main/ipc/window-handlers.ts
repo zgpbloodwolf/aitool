@@ -37,4 +37,46 @@ export function registerWindowHandlers(windowManager: WindowManager): void {
   ipcMain.handle('window:get-window-id', (event) => {
     return event.sender.id
   })
+
+  // 标签拖拽出窗口 — 开始拖拽预览
+  ipcMain.on('tab-drag:start', (_event, data: { channelId: string; tabId: string }) => {
+    // 校验参数格式
+    if (typeof data.channelId !== 'string' || typeof data.tabId !== 'string') return
+    windowManager.startDragPreview(data.channelId, data.tabId)
+  })
+
+  // 标签拖拽出窗口 — 结束拖拽，创建新窗口
+  ipcMain.handle('tab-drag:end', (event) => {
+    const { BrowserWindow } = require('electron')
+    const sourceWindow = BrowserWindow.fromWebContents(event.sender)
+    const sourceWindowId = sourceWindow?.id
+    if (!sourceWindowId) return { success: false, error: '无法确定源窗口' }
+
+    // 先获取拖拽状态（finalizeDragOut 会清除状态）
+    const dragState = windowManager.getDragState()
+
+    const result = windowManager.finalizeDragOut(sourceWindowId)
+    if (result) {
+      // 通知新窗口恢复标签页
+      if (dragState.channelId) {
+        result.window.webContents.send('window:restore-tab', {
+          channelId: dragState.channelId,
+          tabId: dragState.tabId,
+          label: dragState.tabId || '对话'
+        })
+      }
+      return {
+        success: true,
+        windowId: result.windowId,
+        channelId: dragState.channelId,
+        tabId: dragState.tabId
+      }
+    }
+    return { success: false, error: '拖拽取消或失败' }
+  })
+
+  // 标签拖拽出窗口 — 取消拖拽
+  ipcMain.on('tab-drag:cancel', () => {
+    windowManager.cancelDrag()
+  })
 }

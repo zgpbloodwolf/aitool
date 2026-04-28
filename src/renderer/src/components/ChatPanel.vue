@@ -99,6 +99,8 @@ const pendingResume = new Map<string, string>()
 let offWebviewMessage: (() => void) | null = null
 let offProcessCrashed: (() => void) | null = null
 let offProcessUnresponsive: (() => void) | null = null
+// 标签拖拽出窗口 — 恢复标签页事件清理函数
+let offWindowRestoreTab: (() => void) | null = null
 // UX-10: 右键菜单打开目录事件清理函数
 let offOpenDirectory: (() => void) | undefined
 let tabCounter = 0
@@ -555,6 +557,9 @@ function handleIframeMessage(event: MessageEvent) {
     if (message?.type === 'launch_claude' && message.channelId && sourceTabId) {
       channelToTab.set(message.channelId as string, sourceTabId)
 
+      // 注册频道到窗口管理器
+      window.api.windowRegisterChannel(message.channelId as string)
+
       // 捕获 cwd 并设置到标签页
       if (message.cwd && typeof message.cwd === 'string') {
         const tab = tabs.value.find(t => t.id === sourceTabId)
@@ -620,6 +625,21 @@ onMounted(() => {
     }
   })
 
+  // 监听新窗口恢复标签页事件（拖拽出窗口后新窗口接收）
+  offWindowRestoreTab = window.api.onWindowRestoreTab?.((data) => {
+    const restoreTabId = data.tabId
+    if (!tabs.value.find((t) => t.id === restoreTabId)) {
+      tabs.value.push({
+        id: restoreTabId,
+        label: data.label || '对话',
+        cwd: data.cwd
+      })
+      channelToTab.set(data.channelId, restoreTabId)
+      window.api.windowRegisterChannel(data.channelId)
+      activeTabId.value = restoreTabId
+    }
+  })
+
   initWebview()
 })
 
@@ -638,6 +658,7 @@ onBeforeUnmount(() => {
     offProcessUnresponsive = null
   }
   offOpenDirectory?.()
+  offWindowRestoreTab?.()
 })
 
 // 主题切换时重新加载 webview iframe，使 webview 跟随主题变化
@@ -697,8 +718,38 @@ function switchToPrevTab(): void {
 // D-16: 标签拖拽排序状态
 const draggedTabId = ref<string | null>(null)
 const dragOverTabId = ref<string | null>(null)
+// 标签拖拽出窗口状态
+const isDraggingOut = ref(false)
+const dragOutThreshold = 20
+let dragOutNotified = false
 // D-16: 用 CSS order 实现视觉排序，避免移动 iframe DOM 导致重载
 const tabOrder = reactive(new Map<string, number>())
+
+/** 检测鼠标是否接近窗口边缘 — 触发拖出行为 */
+function checkDragOutWindow(e: DragEvent): void {
+  if (!draggedTabId.value || dragOutNotified) return
+
+  const margin = dragOutThreshold
+  const nearEdge =
+    e.clientX < margin ||
+    e.clientX > window.innerWidth - margin ||
+    e.clientY < margin
+
+  if (nearEdge) {
+    let channelId: string | null = null
+    for (const [chId, tabId] of channelToTab) {
+      if (tabId === draggedTabId.value) {
+        channelId = chId
+        break
+      }
+    }
+    if (channelId) {
+      isDraggingOut.value = true
+      dragOutNotified = true
+      window.api.tabDragStart({ channelId, tabId: draggedTabId.value })
+    }
+  }
+}
 
 /** D-16: 拖拽开始 */
 function onDragStart(e: DragEvent, tabId: string): void {
@@ -713,6 +764,8 @@ function onDragOver(e: DragEvent): void {
   if (e.dataTransfer) {
     e.dataTransfer.dropEffect = 'move'
   }
+  // 检测是否拖拽到窗口边缘
+  checkDragOutWindow(e)
 }
 
 /** D-16: 拖拽进入目标标签 */
@@ -741,10 +794,41 @@ function onDrop(_e: DragEvent, targetTabId: string): void {
   onDragEnd()
 }
 
-/** D-16: 拖拽结束 — 清除状态 */
-function onDragEnd(): void {
+/** D-16: 拖拽结束 — 清除状态，处理拖出窗口逻辑 */
+async function onDragEnd(): Promise<void> {
+  if (isDraggingOut.value && draggedTabId.value) {
+    const result = await window.api.tabDragEnd()
+    if (result.success) {
+      // 从标签列表移除已拖出的标签
+      const tabId = draggedTabId.value
+      let channelId: string | null = null
+      for (const [chId, tId] of channelToTab) {
+        if (tId === tabId) {
+          channelId = chId
+          break
+        }
+      }
+      if (channelId) {
+        channelToTab.delete(channelId)
+      }
+      const idx = tabs.value.findIndex((t) => t.id === tabId)
+      if (idx !== -1) tabs.value.splice(idx, 1)
+      iframeRefs.value.delete(tabId)
+      if (tabs.value.length === 0) addNewTab()
+      else if (activeTabId.value === tabId) {
+        activeTabId.value = tabs.value[Math.min(idx, tabs.value.length - 1)].id
+      }
+    } else {
+      window.api.tabDragCancel()
+    }
+  } else if (dragOutNotified) {
+    window.api.tabDragCancel()
+  }
+
   draggedTabId.value = null
   dragOverTabId.value = null
+  isDraggingOut.value = false
+  dragOutNotified = false
 }
 
 /** 检查是否有活跃 channel */
