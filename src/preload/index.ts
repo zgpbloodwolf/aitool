@@ -237,7 +237,13 @@ const api = {
       callback(dirPath)
     ipcRenderer.on('open-directory', handler)
     return () => ipcRenderer.removeListener('open-directory', handler)
-  }
+  },
+
+  // 窗口管理 IPC (UX-11)
+  windowRegisterChannel: (channelId: string): void =>
+    ipcRenderer.send('window:register-channel', channelId),
+  windowTabActivated: (channelId: string): void =>
+    ipcRenderer.send('window:tab-activated', channelId)
 }
 
 export type { ExtensionInfo, SessionInfo, WeChatAccountRecord, WeChatConversationRecord }

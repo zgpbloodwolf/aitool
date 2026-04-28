@@ -1,10 +1,9 @@
-import { app, shell, BrowserWindow, ipcMain, dialog, nativeTheme } from 'electron'
-import { join } from 'path'
+import { app, BrowserWindow, ipcMain, dialog, nativeTheme } from 'electron'
 import { execSync } from 'child_process'
 import { registerDialogHandlers } from './ipc/dialog'
 import { registerFilesystemHandlers } from './ipc/filesystem'
 import { registerExtensionHandlers } from './ipc/extensions'
-import { registerClaudeWebviewHandlers, shutdownClaude } from './ipc/claude-webview'
+import { registerClaudeWebviewHandlers, shutdownClaude, setWindowManager } from './ipc/claude-webview'
 import { bootstrapWeChat, registerWeChatHandlers } from './ipc/wechat'
 import { registerTokenUsageHandlers } from './ipc/token-usage'
 import { registerFileWatcherHandlers, stopAllWatchers } from './ipc/file-watcher'
@@ -13,6 +12,8 @@ import { setupTray, registerTrayHandlers } from './tray/tray-manager'
 import { NotificationManager } from './notification/notification-manager'
 import { setNotificationManager } from './notification/notification-registry'
 import { setupAutoUpdater } from './updater/auto-updater'
+import { WindowManager } from './window/window-manager'
+import { registerWindowHandlers } from './ipc/window-handlers'
 
 // 设置 Windows 控制台代码页为 UTF-8，防止中文日志乱码
 if (process.platform === 'win32') {
@@ -33,7 +34,7 @@ process.stderr.on('error', (err: NodeJS.ErrnoException) => {
 process.on('uncaughtException', (err) => {
   console.error('[主进程] 未捕获异常:', err)
   // 对可能导致数据丢失的错误弹出对话框
-  const win = BrowserWindow.getAllWindows()[0]
+  const win = windowManager?.getLastActiveWindow() ?? BrowserWindow.getAllWindows()[0]
   if (win) {
     dialog.showErrorBox('应用错误', '发生意外错误，请查看日志或重启应用。\n' + String(err))
   }
@@ -47,80 +48,8 @@ process.on('unhandledRejection', (reason) => {
 // D-04: 当前 resolved 主题状态（模块级别，供 getCurrentTheme 导出使用）
 let currentResolvedTheme: 'dark' | 'light' = nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
 
-function createWindow(): BrowserWindow {
-  const mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    minWidth: 800,
-    minHeight: 600,
-    show: true,
-    frame: true,
-    title: 'AI 工具',
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#1e1e2e' : '#eff1f5',
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
-      contextIsolation: true
-    }
-  })
-
-  // 隐藏默认的英文菜单栏
-  mainWindow.setMenu(null)
-
-  // 防止页面标题被覆盖（例如 iframe 内的 Claude Code webview 可能修改标题）
-  mainWindow.on('page-title-updated', (event) => {
-    event.preventDefault()
-  })
-
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.show()
-    mainWindow.focus()
-    if (!app.isPackaged) {
-      mainWindow.webContents.openDevTools({ mode: 'bottom' })
-    }
-  })
-
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
-    return { action: 'deny' }
-  })
-
-  // D-05: 在主进程拦截快捷键，解决 iframe 获取焦点后渲染进程收不到键盘事件的问题
-  mainWindow.webContents.on('before-input-event', (event, input) => {
-    if (!input.control && !input.meta) return
-    // D-12: Ctrl+Shift+V — 剪贴板面板
-    if (input.control && input.shift && input.key.toLowerCase() === 'v') {
-      event.preventDefault()
-      mainWindow.webContents.send('shortcut:clipboard-panel')
-      return
-    }
-    const shortcuts: Record<string, string> = {
-      'n': 'shortcut:new-tab',
-      'w': 'shortcut:close-tab',
-      'b': 'shortcut:toggle-sidebar',
-      ',': 'shortcut:open-settings',
-      '0': 'shortcut:reset-zoom'
-    }
-    if (input.key === 'Tab') {
-      event.preventDefault()
-      mainWindow.webContents.send(input.shift ? 'shortcut:prev-tab' : 'shortcut:next-tab')
-      return
-    }
-    const channel = shortcuts[input.key.toLowerCase()]
-    if (channel) {
-      event.preventDefault()
-      mainWindow.webContents.send(channel)
-    }
-  })
-
-  if (!app.isPackaged && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
-  } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
-  }
-
-  return mainWindow
-}
+// WindowManager 实例 — 管理所有 BrowserWindow
+let windowManager: WindowManager
 
 // D-12: 单实例锁 + 右键菜单通信 (UX-10)
 const gotTheLock = app.requestSingleInstanceLock()
@@ -129,17 +58,15 @@ if (!gotTheLock) {
 } else {
   app.on('second-instance', (_event, argv, _workingDirectory) => {
     // 从命令行参数中提取目录路径
-    // 过滤掉 electron 开发模式参数和 .exe 文件 (RESEARCH Pitfall 3)
     const dirPath = argv.find((arg) =>
       /^[A-Z]:\\/i.test(arg) && !arg.endsWith('.exe')
     )
-    const mainWindow = BrowserWindow.getAllWindows()[0]
-    if (mainWindow) {
-      mainWindow.show()
-      mainWindow.focus()
+    const lastActive = windowManager?.getLastActiveWindow()
+    if (lastActive) {
+      lastActive.show()
+      lastActive.focus()
       if (dirPath) {
-        // 通过 IPC 通知渲染进程创建新标签页并设置工作目录
-        mainWindow.webContents.send('open-directory', dirPath)
+        lastActive.webContents.send('open-directory', dirPath)
       }
     }
   })
@@ -165,31 +92,43 @@ app.whenReady().then(() => {
   registerFileWatcherHandlers()
   void bootstrapWeChat()
 
-  const mainWindow = createWindow()
-  setupTray(mainWindow)
+  // WindowManager 初始化 — 替代独立 createWindow()
+  windowManager = new WindowManager()
+  const mainWindow = windowManager.createMainWindow()
+  setWindowManager(windowManager)
+  registerWindowHandlers(windowManager)
+  setupTray(mainWindow, windowManager)
   registerTrayHandlers()
 
-  // D-04: 系统主题检测 — 监听 Windows 明暗设置变化
+  // D-04: 系统主题检测 — 监听 Windows 明暗设置变化，广播到所有窗口
   nativeTheme.on('updated', () => {
     const resolved = nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
     currentResolvedTheme = resolved
-    mainWindow.webContents.send('theme:system-changed', resolved)
-    // 同步更新窗口背景色和 webview 主题
-    mainWindow.setBackgroundColor(resolved === 'dark' ? '#1e1e2e' : '#eff1f5')
     setWebviewTheme(resolved)
-  })
-
-  // 渲染进程通知主进程主题变更 — 存储 resolved 主题并同步 webview
-  ipcMain.on('theme:update', (_event, _mode: string, resolved?: string) => {
-    if (resolved === 'dark' || resolved === 'light') {
-      currentResolvedTheme = resolved
-      mainWindow.setBackgroundColor(resolved === 'dark' ? '#1e1e2e' : '#eff1f5')
-      setWebviewTheme(resolved)
+    windowManager.broadcastToAll('theme:system-changed', resolved)
+    for (const win of windowManager.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.setBackgroundColor(resolved === 'dark' ? '#1e1e2e' : '#eff1f5')
+      }
     }
   })
 
-  // 通知管理器初始化
-  const notifMgr = new NotificationManager(mainWindow)
+  // 渲染进程通知主进程主题变更 — 广播到所有窗口
+  ipcMain.on('theme:update', (_event, _mode: string, resolved?: string) => {
+    if (resolved === 'dark' || resolved === 'light') {
+      currentResolvedTheme = resolved
+      setWebviewTheme(resolved)
+      windowManager.broadcastToAll('theme:system-changed', resolved)
+      for (const win of windowManager.getAllWindows()) {
+        if (!win.isDestroyed()) {
+          win.setBackgroundColor(resolved === 'dark' ? '#1e1e2e' : '#eff1f5')
+        }
+      }
+    }
+  })
+
+  // 通知管理器初始化 — 接收 WindowManager
+  const notifMgr = new NotificationManager(windowManager)
   setNotificationManager(notifMgr)
 
   // D-12: 自动更新初始化（检查 GitHub Releases）
@@ -199,7 +138,9 @@ app.whenReady().then(() => {
   ensureContextMenuRegistered()
 
   app.on('activate', function () {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    if (BrowserWindow.getAllWindows().length === 0) {
+      windowManager.createMainWindow()
+    }
   })
 })
 

@@ -11,6 +11,14 @@ import { discoverSkills, runClaudeCliCommand } from '../claude/plugin-manager'
 import { handleGetMcpServers, handleMcpServerCommand } from '../claude/mcp-manager'
 import { notificationManager } from '../notification/notification-registry'
 import { recordTokenUsage } from '../claude/token-usage-store'
+import type { WindowManager } from '../window/window-manager'
+
+// WindowManager 注入 — 避免 index.ts ↔ claude-webview.ts 循环依赖
+let windowManager: WindowManager | null = null
+
+export function setWindowManager(wm: WindowManager): void {
+  windowManager = wm
+}
 
 interface PendingToolUse {
   id: string
@@ -125,11 +133,28 @@ async function getExtensionPath(): Promise<string | null> {
   return extensionPath
 }
 
-function sendToWebview(msg: unknown): void {
-  const window = BrowserWindow.getAllWindows()[0]
-  if (window) {
-    safeLog('[ClaudeIPC] 发送到 webview:', JSON.stringify(msg).slice(0, 200))
-    window.webContents.send('claude-webview:to-webview', msg)
+function sendToWebview(msg: unknown, targetChannelId?: string): void {
+  if (!windowManager) {
+    // 降级：无 WindowManager 时使用旧行为
+    const window = BrowserWindow.getAllWindows()[0]
+    if (window) {
+      safeLog('[ClaudeIPC] 发送到 webview (降级):', JSON.stringify(msg).slice(0, 200))
+      window.webContents.send('claude-webview:to-webview', msg)
+    }
+    return
+  }
+
+  if (targetChannelId) {
+    // 定向发送到拥有该频道的窗口
+    const win = windowManager.getWindowByChannel(targetChannelId)
+    if (win && !win.isDestroyed()) {
+      safeLog('[ClaudeIPC] 发送到 webview (定向):', targetChannelId, JSON.stringify(msg).slice(0, 200))
+      win.webContents.send('claude-webview:to-webview', msg)
+    }
+  } else {
+    // 无目标频道 — 广播到所有窗口
+    safeLog('[ClaudeIPC] 发送到 webview (广播):', JSON.stringify(msg).slice(0, 200))
+    windowManager.broadcastToAll('claude-webview:to-webview', msg)
   }
 }
 
@@ -277,7 +302,7 @@ async function handleLaunchClaude(
       pendingMessages.push(tagged)
       return
     }
-    sendToWebview(tagged)
+    sendToWebview(tagged, channelId)
 
     // 通知触发：回复完成
     if (msg.type === 'result' && notificationManager) {
@@ -304,7 +329,7 @@ async function handleLaunchClaude(
     const canRecover = !!channel?.lastSessionId
     if (!persistent) {
       // 通知渲染进程进程已崩溃，提供恢复选项
-      const win = BrowserWindow.getAllWindows()[0]
+      const win = windowManager?.getWindowByChannel(channelId) ?? BrowserWindow.getAllWindows()[0]
       if (win) {
         win.webContents.send('claude:process-crashed', { channelId, canRecover })
       }
@@ -352,7 +377,7 @@ async function handleLaunchClaude(
   proc.startHealthCheck(() => {
     // D-11: 进程无响应回调 — 通知渲染进程
     safeLog('[ClaudeIPC] 进程无响应 [' + channelId + ']')
-    const win = BrowserWindow.getAllWindows()[0]
+    const win = windowManager?.getWindowByChannel(channelId) ?? BrowserWindow.getAllWindows()[0]
     if (win) {
       win.webContents.send('claude:process-unresponsive', { channelId })
     }
@@ -543,7 +568,7 @@ function sendToolPermissionRequest(
       inputs,
       suggestions: []
     }
-  })
+  }, channelId)
 
   // 通知触发：工具权限请求
   if (notificationManager) {

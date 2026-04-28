@@ -8,6 +8,7 @@
 import { BrowserWindow, screen, ipcMain, app } from 'electron'
 import { join } from 'path'
 import { getCurrentTheme } from '../index'
+import type { WindowManager } from '../window/window-manager'
 
 interface NotificationEntry {
   window: BrowserWindow
@@ -34,10 +35,10 @@ const DEFAULT_TIMEOUT = 15000
 const activeNotifications: NotificationEntry[] = []
 
 export class NotificationManager {
-  private mainWindow: BrowserWindow
+  private windowManager: WindowManager
 
-  constructor(mainWindow: BrowserWindow) {
-    this.mainWindow = mainWindow
+  constructor(windowManager: WindowManager) {
+    this.windowManager = windowManager
     this.registerIpcHandlers()
     this.registerTabChangeListener()
   }
@@ -58,12 +59,22 @@ export class NotificationManager {
         case 'reply':
         case 'allow':
         case 'deny':
-          // 先恢复主窗口
-          this.mainWindow.show()
-          this.mainWindow.focus()
+          // 恢复目标窗口
+          {
+            const targetWin = entry.channelId
+              ? this.windowManager.getWindowByChannel(entry.channelId)
+              : this.windowManager.getLastActiveWindow()
+            if (targetWin) {
+              targetWin.show()
+              targetWin.focus()
+            }
+          }
           // 跳转到对应标签页
           if (entry.channelId) {
-            this.mainWindow.webContents.send('notification:focus-tab', entry.channelId)
+            const targetWin = this.windowManager.getWindowByChannel(entry.channelId)
+            if (targetWin) {
+              targetWin.webContents.send('notification:focus-tab', entry.channelId)
+            }
             // 跳转后关闭该对话的所有通知
             this.dismissByChannelId(entry.channelId)
           } else {
@@ -89,34 +100,34 @@ export class NotificationManager {
    * 使用 executeJavaScript 在渲染进程中查询标签页可见性
    */
   async shouldShowNotification(channelId?: string): Promise<boolean> {
-    // 窗口不在前台或不可见 → 一定显示通知
-    if (!this.mainWindow.isFocused() || !this.mainWindow.isVisible()) {
+    if (!channelId) {
+      // 无 channelId — 检查任意窗口是否在前台
+      const windows = this.windowManager.getAllWindows()
+      const anyFocused = windows.some(w => w.isFocused() && w.isVisible())
+      return !anyFocused
+    }
+
+    const targetWin = this.windowManager.getWindowByChannel(channelId)
+    if (!targetWin || !targetWin.isFocused() || !targetWin.isVisible()) {
+      return true // 目标窗口不在前台 → 显示通知
+    }
+
+    // 目标窗口在前台 → 检查标签页可见性
+    try {
+      const safeChannelId = channelId.replace(/[^a-zA-Z0-9_-]/g, '')
+      const isVisible = await targetWin.webContents.executeJavaScript(
+        `(() => {
+          const channelToTab = window.__channelToTab;
+          const activeTabId = window.__activeTabId;
+          if (!channelToTab || activeTabId == null) return false;
+          const tabId = channelToTab.get('${safeChannelId}');
+          return tabId === activeTabId;
+        })()`
+      )
+      return !isVisible
+    } catch {
       return true
     }
-
-    // 窗口在前台 → 检查对应标签页是否可见
-    if (channelId) {
-      try {
-        // T-04-13: channelId 是内部 UUID，清除非字母数字字符防止注入
-        const safeChannelId = channelId.replace(/[^a-zA-Z0-9_-]/g, '')
-        const isVisible = await this.mainWindow.webContents.executeJavaScript(
-          `(() => {
-            const channelToTab = window.__channelToTab;
-            const activeTabId = window.__activeTabId;
-            if (!channelToTab || activeTabId == null) return false;
-            const tabId = channelToTab.get('${safeChannelId}');
-            return tabId === activeTabId;
-          })()`
-        )
-        return !isVisible
-      } catch {
-        // 查询失败 → 默认显示通知
-        return true
-      }
-    }
-
-    // 窗口在前台但无 channelId 信息 → 不显示通知
-    return false
   }
 
   /**
@@ -124,8 +135,10 @@ export class NotificationManager {
    * 优先从 localStorage 读取（通过 executeJavaScript），失败则从文件读取
    */
   private async isNotificationEnabled(type: string): Promise<boolean> {
+    const win = this.windowManager.getLastActiveWindow()
+    if (!win) return true
     try {
-      const result = await this.mainWindow.webContents.executeJavaScript(
+      const result = await win.webContents.executeJavaScript(
         `(() => {
           try {
             const raw = localStorage.getItem('aitools-settings');
@@ -160,7 +173,12 @@ export class NotificationManager {
     const shouldShow = await this.shouldShowNotification(options.channelId)
     if (!shouldShow) {
       // 只触发声音，不显示通知窗口
-      this.mainWindow.webContents.send('notification:play-sound', options.type)
+      const targetWin = options.channelId
+        ? this.windowManager.getWindowByChannel(options.channelId)
+        : this.windowManager.getLastActiveWindow()
+      if (targetWin) {
+        targetWin.webContents.send('notification:play-sound', options.type)
+      }
       return
     }
 

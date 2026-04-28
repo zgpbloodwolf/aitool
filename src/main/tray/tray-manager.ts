@@ -9,6 +9,7 @@
  */
 
 import { Tray, Menu, nativeImage, BrowserWindow, ipcMain, dialog, app } from 'electron'
+import type { WindowManager } from '../window/window-manager'
 import { join } from 'path'
 import { readFileSync, writeFileSync, existsSync } from 'fs'
 
@@ -52,7 +53,7 @@ function saveCloseBehavior(behavior: CloseBehavior): void {
  *
  * @param mainWindow - 主窗口实例，用于控制窗口显示/隐藏
  */
-export function setupTray(mainWindow: BrowserWindow): void {
+export function setupTray(mainWindow: BrowserWindow, windowManager: WindowManager): void {
   // 解析图标路径 — 开发和生产环境均使用相对路径
   // __dirname 在开发模式指向 out/main/，生产模式也指向同一位置
   const iconPath = join(__dirname, '../../build/icon.ico')
@@ -66,17 +67,19 @@ export function setupTray(mainWindow: BrowserWindow): void {
     {
       label: '新建对话',
       click: () => {
-        mainWindow.show()
-        mainWindow.focus()
-        mainWindow.webContents.send('shortcut:new-tab')
+        const win = windowManager.getLastActiveWindow() || mainWindow
+        win.show()
+        win.focus()
+        win.webContents.send('shortcut:new-tab')
       }
     },
     { type: 'separator' },
     {
       label: '显示窗口',
       click: () => {
-        mainWindow.show()
-        mainWindow.focus()
+        const win = windowManager.getLastActiveWindow() || mainWindow
+        win.show()
+        win.focus()
       }
     },
     { type: 'separator' },
@@ -90,10 +93,11 @@ export function setupTray(mainWindow: BrowserWindow): void {
 
   tray.setContextMenu(contextMenu)
 
-  // 双击托盘图标恢复窗口
+  // 双击托盘图标恢复最后活跃窗口
   tray.on('double-click', () => {
-    mainWindow.show()
-    mainWindow.focus()
+    const win = windowManager.getLastActiveWindow() || mainWindow
+    win.show()
+    win.focus()
   })
 
   // 关闭行为管理

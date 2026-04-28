@@ -82,6 +82,9 @@ declare global {
       }>
       // 右键菜单打开目录 (UX-10)
       onOpenDirectory: (callback: (dirPath: string) => void) => () => void
+      // 窗口管理 IPC (UX-11)
+      windowRegisterChannel: (channelId: string) => void
+      windowTabActivated: (channelId: string) => void
     }
   }
 }
