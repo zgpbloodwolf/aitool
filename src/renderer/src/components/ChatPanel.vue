@@ -10,6 +10,7 @@ import type { SessionInfo } from '../../../shared/types'
 interface SessionTab {
   id: string
   label: string
+  cwd?: string
 }
 
 const extStore = useExtensionStore()
@@ -294,9 +295,9 @@ async function initWebview() {
   }
 }
 
-function addNewTab() {
+function addNewTab(cwd?: string) {
   const id = generateTabId()
-  tabs.value.push({ id, label: `对话 ${tabs.value.length + 1}` })
+  tabs.value.push({ id, label: `对话 ${tabs.value.length + 1}`, cwd })
   tabOrder.set(id, tabs.value.length - 1)
   activeTabId.value = id
 }
@@ -554,6 +555,12 @@ function handleIframeMessage(event: MessageEvent) {
     if (message?.type === 'launch_claude' && message.channelId && sourceTabId) {
       channelToTab.set(message.channelId as string, sourceTabId)
 
+      // 捕获 cwd 并设置到标签页
+      if (message.cwd && typeof message.cwd === 'string') {
+        const tab = tabs.value.find(t => t.id === sourceTabId)
+        if (tab) tab.cwd = message.cwd
+      }
+
       // Inject resumeSessionId if this tab has a pending resume
       const pendingSessionId = pendingResume.get(sourceTabId)
       if (pendingSessionId) {
@@ -609,7 +616,7 @@ onMounted(() => {
   offOpenDirectory = window.api.onOpenDirectory?.((dirPath: string) => {
     if (dirPath) {
       window.api.claudeSetCwd(dirPath)
-      addNewTab()
+      addNewTab(dirPath)
     }
   })
 
@@ -845,7 +852,10 @@ async function handleClipboardSelect(_text: string): Promise<void> {
             @dragend="onDragEnd"
           >
             <span class="tab-status-dot" :class="tabStatuses.get(tab.id) || 'idle'" />
-            <span class="tab-label">{{ tab.label }}</span>
+            <span class="tab-text">
+              <span class="tab-label">{{ tab.label }}</span>
+              <span v-if="tab.cwd" class="tab-cwd" :title="tab.cwd">{{ tab.cwd.split(/[\\/]/).pop() }}</span>
+            </span>
             <span class="tab-close" @click.stop="closeTab(tab.id)">×</span>
           </div>
         </div>
@@ -857,7 +867,7 @@ async function handleClipboardSelect(_text: string): Promise<void> {
         >
           &#x1F552;
         </button>
-        <button class="tab-add" @click="addNewTab" title="新建对话">+</button>
+        <button class="tab-add" @click="() => addNewTab()" title="新建对话">+</button>
       </div>
 
       <!-- Iframes - all loaded but only active one visible -->
@@ -1100,9 +1110,25 @@ async function handleClipboardSelect(_text: string): Promise<void> {
   border-left: 2px solid var(--accent, #89b4fa);
 }
 
+.tab-text {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .tab-label {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-cwd {
+  font-size: 10px;
+  color: var(--text-muted, #6c7086);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.2;
 }
 
 /* D-14: 标签状态指示器圆点 */
