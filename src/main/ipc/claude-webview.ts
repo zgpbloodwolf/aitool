@@ -837,6 +837,55 @@ export function registerClaudeWebviewHandlers(): void {
       return await exportSessionAsMarkdown(sessionId, title, savePath, currentCwd)
     }
   )
+
+  // UX-12: 分支管理 IPC
+  ipcMain.handle('branch:create', async (_event, data: {
+    parentSessionId: string
+    branchPointIndex: number
+    cwd: string
+  }) => {
+    const { createBranch } = await import('../claude/branch-manager')
+    return await createBranch(
+      data.parentSessionId,
+      data.branchPointIndex,
+      data.cwd,
+      handleLaunchClaude,
+      sendToWebview
+    )
+  })
+
+  ipcMain.handle('branch:list', async (_event, parentSessionId: string) => {
+    const { listBranches } = await import('../claude/branch-manager')
+    return listBranches(parentSessionId)
+  })
+
+  ipcMain.handle('branch:list-at-point', async (_event, data: {
+    parentSessionId: string
+    branchPointIndex: number
+  }) => {
+    const { listBranchesAtPoint } = await import('../claude/branch-manager')
+    return listBranchesAtPoint(data.parentSessionId, data.branchPointIndex)
+  })
+
+  ipcMain.handle('branch:rename', async (_event, branchId: string, newLabel: string) => {
+    const { renameBranch } = await import('../claude/branch-manager')
+    return renameBranch(branchId, newLabel)
+  })
+
+  ipcMain.handle('branch:delete', async (_event, branchId: string) => {
+    const { removeBranch } = await import('../claude/branch-manager')
+    return removeBranch(branchId)
+  })
+
+  ipcMain.handle('branch:find-by-channel', async (_event, channelId: string) => {
+    const { findBranchByChannel } = await import('../claude/branch-manager')
+    return findBranchByChannel(channelId) || null
+  })
+
+  ipcMain.handle('branch:can-create', async (_event, parentSessionId: string) => {
+    const { canCreateBranch, getRemainingQuota } = await import('../claude/branch-store')
+    return { canCreate: canCreateBranch(parentSessionId), remaining: getRemainingQuota(parentSessionId) }
+  })
 }
 
 // --- Webview Request Handler ---

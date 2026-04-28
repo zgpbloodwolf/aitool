@@ -85,6 +85,35 @@ declare global {
       // 窗口管理 IPC (UX-11)
       windowRegisterChannel: (channelId: string) => void
       windowTabActivated: (channelId: string) => void
+      // 标签拖拽出窗口 IPC (UX-11)
+      tabDragStart: (data: { channelId: string; tabId: string }) => void
+      tabDragEnd: () => Promise<{
+        success: boolean
+        windowId?: number
+        channelId?: string
+        tabId?: string
+        error?: string
+      }>
+      tabDragCancel: () => void
+      // 新窗口恢复标签页事件
+      onWindowRestoreTab: (
+        callback: (data: { channelId: string; tabId: string; label: string; cwd?: string }) => void
+      ) => () => void
+      // 分支管理 IPC (UX-12)
+      branchCreate: (data: {
+        parentSessionId: string
+        branchPointIndex: number
+        cwd: string
+      }) => Promise<{ success: boolean; branch?: unknown; channelId?: string; error?: string }>
+      branchList: (parentSessionId: string) => Promise<unknown[]>
+      branchListAtPoint: (data: {
+        parentSessionId: string
+        branchPointIndex: number
+      }) => Promise<unknown[]>
+      branchRename: (branchId: string, newLabel: string) => Promise<boolean>
+      branchDelete: (branchId: string) => Promise<boolean>
+      branchFindByChannel: (channelId: string) => Promise<unknown | null>
+      branchCanCreate: (parentSessionId: string) => Promise<{ canCreate: boolean; remaining: number }>
     }
   }
 }

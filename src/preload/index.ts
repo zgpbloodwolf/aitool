@@ -243,7 +243,54 @@ const api = {
   windowRegisterChannel: (channelId: string): void =>
     ipcRenderer.send('window:register-channel', channelId),
   windowTabActivated: (channelId: string): void =>
-    ipcRenderer.send('window:tab-activated', channelId)
+    ipcRenderer.send('window:tab-activated', channelId),
+
+  // 标签拖拽出窗口 IPC (UX-11)
+  tabDragStart: (data: { channelId: string; tabId: string }): void =>
+    ipcRenderer.send('tab-drag:start', data),
+  tabDragEnd: (): Promise<{
+    success: boolean
+    windowId?: number
+    channelId?: string
+    tabId?: string
+    error?: string
+  }> => ipcRenderer.invoke('tab-drag:end'),
+  tabDragCancel: (): void => ipcRenderer.send('tab-drag:cancel'),
+
+  // 新窗口恢复标签页事件监听
+  onWindowRestoreTab: (
+    callback: (data: { channelId: string; tabId: string; label: string; cwd?: string }) => void
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      data: { channelId: string; tabId: string; label: string; cwd?: string }
+    ): void => callback(data)
+    ipcRenderer.on('window:restore-tab', handler)
+    return () => ipcRenderer.removeListener('window:restore-tab', handler)
+  },
+
+  // 分支管理 IPC (UX-12)
+  branchCreate: (data: {
+    parentSessionId: string
+    branchPointIndex: number
+    cwd: string
+  }): Promise<{ success: boolean; branch?: unknown; channelId?: string; error?: string }> =>
+    ipcRenderer.invoke('branch:create', data),
+  branchList: (parentSessionId: string): Promise<unknown[]> =>
+    ipcRenderer.invoke('branch:list', parentSessionId),
+  branchListAtPoint: (data: {
+    parentSessionId: string
+    branchPointIndex: number
+  }): Promise<unknown[]> =>
+    ipcRenderer.invoke('branch:list-at-point', data),
+  branchRename: (branchId: string, newLabel: string): Promise<boolean> =>
+    ipcRenderer.invoke('branch:rename', branchId, newLabel),
+  branchDelete: (branchId: string): Promise<boolean> =>
+    ipcRenderer.invoke('branch:delete', branchId),
+  branchFindByChannel: (channelId: string): Promise<unknown | null> =>
+    ipcRenderer.invoke('branch:find-by-channel', channelId),
+  branchCanCreate: (parentSessionId: string): Promise<{ canCreate: boolean; remaining: number }> =>
+    ipcRenderer.invoke('branch:can-create', parentSessionId)
 }
 
 export type { ExtensionInfo, SessionInfo, WeChatAccountRecord, WeChatConversationRecord }

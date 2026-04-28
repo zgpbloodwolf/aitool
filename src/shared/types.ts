@@ -21,3 +21,20 @@ export interface ExportSessionResult {
   success: boolean
   error?: string
 }
+
+/** 分支元数据 (UX-12) */
+export interface BranchMeta {
+  id: string
+  parentSessionId: string
+  branchPointIndex: number
+  channelId: string
+  label: string
+  createdAt: number
+  parentTabId?: string
+}
+
+/** 分支存储数据结构 */
+export interface BranchesData {
+  branches: Record<string, BranchMeta>
+  sessionBranchCount: Record<string, number>
+}
