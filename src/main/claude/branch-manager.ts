@@ -9,10 +9,15 @@
 
 import type { BranchMeta } from '../../shared/types'
 import {
-  canCreateBranch, saveBranch, getBranchesByParent,
-  getBranchesAtPoint, getBranchByChannelId,
-  renameBranch as renameBranchInStore, getNextBranchNumber,
-  getRemainingQuota, deleteBranch as deleteBranchInStore
+  canCreateBranch,
+  saveBranch,
+  getBranchesByParent,
+  getBranchesAtPoint,
+  getBranchByChannelId,
+  renameBranch as renameBranchInStore,
+  getNextBranchNumber,
+  getRemainingQuota,
+  deleteBranch as deleteBranchInStore
 } from './branch-store'
 import { getSessionMessages } from './session-store'
 import { safeLog, safeError } from './logger'
@@ -28,7 +33,14 @@ export async function createBranch(
   parentSessionId: string,
   branchPointIndex: number,
   cwd: string,
-  handleLaunchFn: (channelId: string, cwd: string, permMode: string, thinkingLevel: string, resumeSessionId?: string, persistent?: boolean) => Promise<void>,
+  handleLaunchFn: (
+    channelId: string,
+    cwd: string,
+    permMode: string,
+    thinkingLevel: string,
+    resumeSessionId?: string,
+    persistent?: boolean
+  ) => Promise<void>,
   sendToWebviewFn: (msg: unknown, targetChannelId?: string) => void
 ): Promise<BranchCreateResult> {
   if (!canCreateBranch(parentSessionId)) {
@@ -81,7 +93,10 @@ export function listBranches(parentSessionId: string): BranchMeta[] {
   return getBranchesByParent(parentSessionId)
 }
 
-export function listBranchesAtPoint(parentSessionId: string, branchPointIndex: number): BranchMeta[] {
+export function listBranchesAtPoint(
+  parentSessionId: string,
+  branchPointIndex: number
+): BranchMeta[] {
   return getBranchesAtPoint(parentSessionId, branchPointIndex)
 }
 

@@ -77,21 +77,25 @@ export function saveBranch(branch: BranchMeta): void {
 export function getBranchesByParent(parentSessionId: string): BranchMeta[] {
   loadBranchData()
   return Object.values(data.branches)
-    .filter(b => b.parentSessionId === parentSessionId)
+    .filter((b) => b.parentSessionId === parentSessionId)
     .sort((a, b) => a.branchPointIndex - b.branchPointIndex || a.createdAt - b.createdAt)
 }
 
 /** 获取分支点相同的所有分支 */
-export function getBranchesAtPoint(parentSessionId: string, branchPointIndex: number): BranchMeta[] {
+export function getBranchesAtPoint(
+  parentSessionId: string,
+  branchPointIndex: number
+): BranchMeta[] {
   loadBranchData()
-  return Object.values(data.branches)
-    .filter(b => b.parentSessionId === parentSessionId && b.branchPointIndex === branchPointIndex)
+  return Object.values(data.branches).filter(
+    (b) => b.parentSessionId === parentSessionId && b.branchPointIndex === branchPointIndex
+  )
 }
 
 /** 获取指定频道 ID 对应的分支 */
 export function getBranchByChannelId(channelId: string): BranchMeta | undefined {
   loadBranchData()
-  return Object.values(data.branches).find(b => b.channelId === channelId)
+  return Object.values(data.branches).find((b) => b.channelId === channelId)
 }
 
 /** 重命名分支 */

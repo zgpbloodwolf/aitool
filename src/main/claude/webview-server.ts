@@ -509,17 +509,25 @@ function generateHostHtml(_extensionPath: string): string {
 
       var messageIndex = 0;
 
-      var observer = new MutationObserver(function() { injectBranchButtons(); });
+      var observer = new MutationObserver(function() { scheduleInject(); });
       observer.observe(document.body, { childList: true, subtree: true });
 
+      // 节流：避免 MutationObserver 高频触发导致性能问题
+      var injectTimer = null;
+      function scheduleInject() {
+        if (injectTimer) return;
+        injectTimer = setTimeout(function() {
+          injectTimer = null;
+          injectBranchButtons();
+        }, 200);
+      }
+
       function injectBranchButtons() {
-        var userMessages = document.querySelectorAll('.chat-message, [data-message-author-role="user"], .message-row');
+        // Claude Code webview 使用 CSS Modules，类名格式: userMessageContainer_XXXXXX
+        // 使用 [class*="..."] 匹配以兼容哈希后缀变化
+        var userMessages = document.querySelectorAll('[class*="userMessageContainer"]');
         userMessages.forEach(function(msg) {
           if (msg.classList.contains('aitools-branch-processed')) return;
-          var isUserMsg = msg.querySelector('[data-is-user="true"]') !== null ||
-                          msg.classList.contains('user') ||
-                          msg.getAttribute('data-message-author-role') === 'user';
-          if (!isUserMsg) return;
           msg.classList.add('aitools-branch-processed', 'aitools-user-msg');
           msg.style.position = 'relative';
           var idx = messageIndex++;
