@@ -19,6 +19,7 @@
 
 ### Git 规范
 - 提交消息遵循 Conventional Commits
+- 提交消息使用中文（标题和正文均为中文）
 - 标题遵守 52/70 字符限制
 - 正文表达 what/why 而非 how，使用空行与 bulleted list
 
