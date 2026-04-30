@@ -32,9 +32,8 @@ watch(() => settingsStore.settings.theme, (newTheme) => {
 
 // 监听主进程发来的系统主题变化通知（仅 'system' 模式下响应）
 window.api?.onThemeSystemChanged((resolvedTheme) => {
+  document.documentElement.setAttribute('data-theme', resolvedTheme)
   if (settingsStore.settings.theme === 'system') {
-    document.documentElement.setAttribute('data-theme', resolvedTheme)
-    // 通知主进程更新 resolved 值
     window.api?.updateTheme('system', resolvedTheme)
   }
 })
