@@ -16,6 +16,7 @@ export class WindowManager {
   private dragTrackingInterval: ReturnType<typeof setInterval> | null = null
   private dragChannelId: string | null = null
   private dragTabId: string | null = null
+  private dragLabel: string | null = null
 
   /** 创建初始主窗口，等同于原 createWindow() 行为 */
   createMainWindow(): BrowserWindow {
@@ -98,12 +99,13 @@ export class WindowManager {
   }
 
   /** 开始拖拽预览 — 创建半透明 ghost 窗口跟随鼠标 */
-  startDragPreview(channelId: string, tabId: string): void {
+  startDragPreview(channelId: string, tabId: string, label?: string): void {
     // 防止重复调用
     if (this.ghostWindow) return
 
     this.dragChannelId = channelId
     this.dragTabId = tabId
+    this.dragLabel = label || null
 
     const cursorPos = screen.getCursorScreenPoint()
 
@@ -211,11 +213,12 @@ export class WindowManager {
     this.ghostWindow = null
     this.dragChannelId = null
     this.dragTabId = null
+    this.dragLabel = null
   }
 
   /** 获取当前拖拽状态 */
-  getDragState(): { channelId: string | null; tabId: string | null } {
-    return { channelId: this.dragChannelId, tabId: this.dragTabId }
+  getDragState(): { channelId: string | null; tabId: string | null; label: string | null } {
+    return { channelId: this.dragChannelId, tabId: this.dragTabId, label: this.dragLabel }
   }
 
   /** 内部：创建 BrowserWindow 实例并注册生命周期 */

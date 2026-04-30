@@ -3,6 +3,10 @@
 
 import { ipcMain } from 'electron'
 import type { WindowManager } from '../window/window-manager'
+import { getChannelSessionId } from './claude-webview'
+
+// 拖拽恢复：暂存恢复数据，等渲染器就绪后主动拉取
+const pendingRestores = new Map<number, { channelId: string; tabId: string; label: string; sessionId: string | null }>()
 
 export function registerWindowHandlers(windowManager: WindowManager): void {
   const registry = windowManager.getRegistry()
@@ -39,10 +43,10 @@ export function registerWindowHandlers(windowManager: WindowManager): void {
   })
 
   // 标签拖拽出窗口 — 开始拖拽预览
-  ipcMain.on('tab-drag:start', (_event, data: { channelId: string; tabId: string }) => {
+  ipcMain.on('tab-drag:start', (_event, data: { channelId: string; tabId: string; label?: string }) => {
     // 校验参数格式
     if (typeof data.channelId !== 'string' || typeof data.tabId !== 'string') return
-    windowManager.startDragPreview(data.channelId, data.tabId)
+    windowManager.startDragPreview(data.channelId, data.tabId, data.label)
   })
 
   // 标签拖拽出窗口 — 结束拖拽，创建新窗口
@@ -56,14 +60,16 @@ export function registerWindowHandlers(windowManager: WindowManager): void {
     // 先获取拖拽状态（finalizeDragOut 会清除状态）
     const dragState = windowManager.getDragState()
 
-    const result = windowManager.finalizeDragOut(sourceWindowId)
+    const result = windowManager.finalizeDragOut(_sourceWindowId)
     if (result) {
-      // 通知新窗口恢复标签页
+      // 暂存恢复数据，等新窗口渲染进程就绪后主动拉取
       if (dragState.channelId) {
-        result.window.webContents.send('window:restore-tab', {
+        const sessionId = getChannelSessionId(dragState.channelId)
+        pendingRestores.set(result.windowId, {
           channelId: dragState.channelId,
           tabId: dragState.tabId,
-          label: dragState.tabId || '对话'
+          label: dragState.label || '对话',
+          sessionId
         })
       }
       return {
@@ -74,6 +80,20 @@ export function registerWindowHandlers(windowManager: WindowManager): void {
       }
     }
     return { success: false, error: '拖拽取消或失败' }
+  })
+
+  // 新窗口渲染进程就绪后，主动拉取暂存的恢复数据
+  ipcMain.handle('window:get-pending-restore', (event) => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { BrowserWindow } = require('electron') as typeof import('electron')
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win) return null
+    const data = pendingRestores.get(win.id)
+    if (data) {
+      pendingRestores.delete(win.id)
+      return data
+    }
+    return null
   })
 
   // 标签拖拽出窗口 — 取消拖拽

@@ -366,9 +366,7 @@ async function handleLaunchClaude(
     sentPermissionRequests: new Set(),
     totalInputTokens: 0,
     totalOutputTokens: 0,
-    // D-10: 保存 sessionId 用于崩溃恢复
     lastSessionId: resumeSessionId || null,
-    // UX-09: 保存工作目录用于 token 用量统计
     cwd: cwd || process.cwd()
   })
   launchingChannels.delete(channelId)
@@ -768,7 +766,7 @@ export function registerClaudeWebviewHandlers(): void {
     return await deleteSession(sessionId, currentCwd)
   })
 
-  ipcMain.handle('claude:resume-session', async (_event, channelId: string, sessionId: string) => {
+  ipcMain.handle('claude:resume-session', async (event, channelId: string, sessionId: string) => {
     safeLog('[ClaudeIPC] 正在恢复会话:', sessionId, '频道:', channelId)
 
     if (channelId && channels.has(channelId)) {
@@ -782,6 +780,7 @@ export function registerClaudeWebviewHandlers(): void {
       channelId || `ch_${Date.now()}_${Math.random().toString(36).slice(2)}`
 
     const messages = await getSessionMessages(sessionId, currentCwd)
+    safeLog('[ClaudeIPC] 会话消息数量:', messages.length, 'effectiveChannelId:', effectiveChannelId)
     for (const obj of messages) {
       sendToWebview({ type: 'io_message', channelId: effectiveChannelId, message: obj }, effectiveChannelId)
     }
@@ -1234,6 +1233,12 @@ async function handlePluginCommand(
       response: { type: 'error', error: String(e) }
     })
   }
+}
+
+/** 获取频道的 lastSessionId，供拖拽出窗口时传递会话上下文 */
+export function getChannelSessionId(channelId: string): string | null {
+  const channel = channels.get(channelId)
+  return channel?.lastSessionId || null
 }
 
 export async function shutdownClaude(): Promise<void> {

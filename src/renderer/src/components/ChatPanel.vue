@@ -119,6 +119,9 @@ let offWindowRestoreTab: (() => void) | null = null
 let offOpenDirectory: (() => void) | undefined
 let tabCounter = 0
 
+// 拖拽恢复：等待 webview 就绪后再执行的挂起任务
+let pendingRestore: { sessionId: string; summary?: string } | null = null
+
 // D-11: 无响应的 channel 集合，用于显示重启按钮
 const unresponsiveChannels = ref<Set<string>>(new Set())
 
@@ -438,6 +441,22 @@ async function initWebview() {
 
     // Create initial tab
     addNewTab()
+
+    // 拖拽恢复：从主进程拉取暂存的恢复数据
+    const restoreData = await window.api.windowGetPendingRestore?.()
+    if (restoreData?.sessionId) {
+      // 保留标签名，但先启动正常进程让 webview 建立 session
+      const defaultTab = tabs.value.find(t => t.id === activeTabId.value)
+      if (defaultTab) {
+        defaultTab.label = restoreData.label || '对话'
+      }
+      // 等 webview 进程初始化完成后再恢复旧会话
+      const pendingSessionId = restoreData.sessionId
+      const pendingSummary = restoreData.label
+      setTimeout(() => {
+        resumeSession(pendingSessionId, pendingSummary)
+      }, 3000)
+    }
   } catch (e) {
     console.error('[聊天面板] 初始化 webview 出错:', e)
     error.value = String(e)
@@ -514,7 +533,7 @@ async function resumeSession(sessionId: string, summary?: string): Promise<void>
   const result = await window.api.claudeResumeSession(activeChannelId, sessionId)
 
   if (result.success && activeTabId.value && result.channelId) {
-    // Remove old mapping and add new one
+    // 更新映射（effectiveChannelId 可能与传入的不同）
     for (const [chId, tabId] of channelToTab) {
       if (tabId === activeTabId.value) channelToTab.delete(chId)
     }
@@ -797,9 +816,15 @@ onMounted(() => {
         label: data.label || '对话',
         cwd: data.cwd
       })
-      channelToTab.set(data.channelId, restoreTabId)
-      window.api.windowRegisterChannel(data.channelId)
       activeTabId.value = restoreTabId
+
+      if (data.sessionId) {
+        // webview 可能还未就绪，存为挂起任务，等 initWebview 完成后执行
+        pendingRestore = { sessionId: data.sessionId, summary: data.label }
+      } else {
+        channelToTab.set(data.channelId, restoreTabId)
+        window.api.windowRegisterChannel(data.channelId)
+      }
     }
   })
 
@@ -883,14 +908,24 @@ const draggedTabId = ref<string | null>(null)
 const dragOverTabId = ref<string | null>(null)
 // 标签拖拽出窗口状态
 const isDraggingOut = ref(false)
-const dragOutThreshold = 20
+const dragOutThreshold = 50
 let dragOutNotified = false
 // D-16: 用 CSS order 实现视觉排序，避免移动 iframe DOM 导致重载
 const tabOrder = reactive(new Map<string, number>())
 
-/** 检测鼠标是否接近窗口边缘 — 触发拖出行为 */
-function checkDragOutWindow(e: DragEvent): void {
+/** D-16: 拖拽开始 */
+function onDragStart(e: DragEvent, tabId: string): void {
+  draggedTabId.value = tabId
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move'
+  }
+}
+
+/** 拖拽中 — drag 事件在源元素上持续触发，不受 iframe 拦截 */
+function onDrag(e: DragEvent): void {
   if (!draggedTabId.value || dragOutNotified) return
+  // drag 事件最后会触发一次 clientX/clientY === 0（松开时），忽略
+  if (e.clientX === 0 && e.clientY === 0) return
 
   const margin = dragOutThreshold
   const nearEdge =
@@ -909,26 +944,17 @@ function checkDragOutWindow(e: DragEvent): void {
     if (channelId) {
       isDraggingOut.value = true
       dragOutNotified = true
-      window.api.tabDragStart({ channelId, tabId: draggedTabId.value })
+      const tab = tabs.value.find(t => t.id === draggedTabId.value)
+      window.api.tabDragStart({ channelId, tabId: draggedTabId.value, label: tab?.label })
     }
   }
 }
 
-/** D-16: 拖拽开始 */
-function onDragStart(e: DragEvent, tabId: string): void {
-  draggedTabId.value = tabId
-  if (e.dataTransfer) {
-    e.dataTransfer.effectAllowed = 'move'
-  }
-}
-
-/** D-16: 拖拽经过 */
+/** D-16: 拖拽经过（标签间排序） */
 function onDragOver(e: DragEvent): void {
   if (e.dataTransfer) {
     e.dataTransfer.dropEffect = 'move'
   }
-  // 检测是否拖拽到窗口边缘
-  checkDragOutWindow(e)
 }
 
 /** D-16: 拖拽进入目标标签 */
@@ -1092,6 +1118,7 @@ async function handleClipboardSelect(_text: string): Promise<void> {
             @mousedown.middle.prevent="closeTab(tab.id)"
             @contextmenu.prevent="showTabContextMenu($event, tab.id)"
             @dragstart="onDragStart($event, tab.id)"
+            @drag="onDrag($event)"
             @dragover.prevent="onDragOver($event)"
             @dragenter.prevent="onDragEnter(tab.id)"
             @dragleave="onDragLeave(tab.id)"

@@ -246,7 +246,7 @@ const api = {
     ipcRenderer.send('window:tab-activated', channelId),
 
   // 标签拖拽出窗口 IPC (UX-11)
-  tabDragStart: (data: { channelId: string; tabId: string }): void =>
+  tabDragStart: (data: { channelId: string; tabId: string; label?: string }): void =>
     ipcRenderer.send('tab-drag:start', data),
   tabDragEnd: (): Promise<{
     success: boolean
@@ -257,7 +257,15 @@ const api = {
   }> => ipcRenderer.invoke('tab-drag:end'),
   tabDragCancel: (): void => ipcRenderer.send('tab-drag:cancel'),
 
-  // 新窗口恢复标签页事件监听
+  // 新窗口恢复标签页 — 拉取暂存的恢复数据（渲染进程就绪后调用）
+  windowGetPendingRestore: (): Promise<{
+    channelId: string
+    tabId: string
+    label: string
+    sessionId: string | null
+  } | null> => ipcRenderer.invoke('window:get-pending-restore'),
+
+  // 新窗口恢复标签页事件监听（兼容保留）
   onWindowRestoreTab: (
     callback: (data: { channelId: string; tabId: string; label: string; cwd?: string }) => void
   ): (() => void) => {

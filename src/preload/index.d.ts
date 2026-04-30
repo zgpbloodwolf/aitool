@@ -86,7 +86,7 @@ declare global {
       windowRegisterChannel: (channelId: string) => void
       windowTabActivated: (channelId: string) => void
       // 标签拖拽出窗口 IPC (UX-11)
-      tabDragStart: (data: { channelId: string; tabId: string }) => void
+      tabDragStart: (data: { channelId: string; tabId: string; label?: string }) => void
       tabDragEnd: () => Promise<{
         success: boolean
         windowId?: number
@@ -95,7 +95,14 @@ declare global {
         error?: string
       }>
       tabDragCancel: () => void
-      // 新窗口恢复标签页事件
+      // 新窗口恢复标签页 — 拉取暂存的恢复数据
+      windowGetPendingRestore: () => Promise<{
+        channelId: string
+        tabId: string
+        label: string
+        sessionId: string | null
+      } | null>
+      // 新窗口恢复标签页事件（兼容保留）
       onWindowRestoreTab: (
         callback: (data: { channelId: string; tabId: string; label: string; cwd?: string }) => void
       ) => () => void
